@@ -13,6 +13,12 @@
 	"HEADERS" : 
 	[
 		[
+			"C:/Users/Lenovo/Documents/hostcomputer/src/parser/ProtocolParser.h",
+			"MU",
+			"EWIEGA46WW/moc_ProtocolParser.cpp",
+			null
+		],
+		[
 			"C:/Users/Lenovo/Documents/hostcomputer/src/parser/motor_state.h",
 			"MU",
 			"EWIEGA46WW/moc_motor_state.cpp",
@@ -92,6 +98,11 @@
 	"SETTINGS_FILE" : "C:/Users/Lenovo/Documents/hostcomputer/build/Desktop_Qt_6_8_3_MinGW_64_bit-Debug/src/parser/CMakeFiles/parser_layer_autogen.dir/AutogenUsed.txt",
 	"SOURCES" : 
 	[
+		[
+			"C:/Users/Lenovo/Documents/hostcomputer/src/parser/ProtocolParser.cpp",
+			"MU",
+			null
+		],
 		[
 			"C:/Users/Lenovo/Documents/hostcomputer/src/parser/parser.cpp",
 			"MU",

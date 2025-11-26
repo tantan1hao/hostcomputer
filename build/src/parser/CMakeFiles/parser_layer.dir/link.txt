@@ -1,0 +1,2 @@
+D:\Qt\Tools\mingw1310_64\bin\ar.exe qc libparser_layer.a CMakeFiles/parser_layer.dir/parser_layer_autogen/mocs_compilation.cpp.obj CMakeFiles/parser_layer.dir/parser.cpp.obj CMakeFiles/parser_layer.dir/enhanced_parser.cpp.obj
+D:\Qt\Tools\mingw1310_64\bin\ranlib.exe libparser_layer.a

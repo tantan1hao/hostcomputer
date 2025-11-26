@@ -1,6 +1,10 @@
 C:/Users/Lenovo/Documents/hostcomputer/build/Desktop_Qt_6_8_3_MinGW_64_bit-Debug/hostcomputer_autogen/EWIEGA46WW/moc_mainwindow.cpp: C:/Users/Lenovo/Documents/hostcomputer/mainwindow.h \
   C:/Users/Lenovo/Documents/hostcomputer/build/Desktop_Qt_6_8_3_MinGW_64_bit-Debug/hostcomputer_autogen/moc_predefs.h \
+  C:/Users/Lenovo/Documents/hostcomputer/src/controller/VideoWidget.h \
+  C:/Users/Lenovo/Documents/hostcomputer/src/parser/motor_state.h \
+  D:/Qt/6.8.3/mingw_64/include/QtCore/QByteArray \
   D:/Qt/6.8.3/mingw_64/include/QtCore/QDateTime \
+  D:/Qt/6.8.3/mingw_64/include/QtCore/QString \
   D:/Qt/6.8.3/mingw_64/include/QtCore/QTimer \
   D:/Qt/6.8.3/mingw_64/include/QtCore/q20functional.h \
   D:/Qt/6.8.3/mingw_64/include/QtCore/q20iterator.h \
@@ -128,6 +132,8 @@ C:/Users/Lenovo/Documents/hostcomputer/build/Desktop_Qt_6_8_3_MinGW_64_bit-Debug
   D:/Qt/6.8.3/mingw_64/include/QtCore/qversiontagging.h \
   D:/Qt/6.8.3/mingw_64/include/QtCore/qxptype_traits.h \
   D:/Qt/6.8.3/mingw_64/include/QtCore/qyieldcpu.h \
+  D:/Qt/6.8.3/mingw_64/include/QtGui/QPainter \
+  D:/Qt/6.8.3/mingw_64/include/QtGui/QPixmap \
   D:/Qt/6.8.3/mingw_64/include/QtGui/qaction.h \
   D:/Qt/6.8.3/mingw_64/include/QtGui/qbitmap.h \
   D:/Qt/6.8.3/mingw_64/include/QtGui/qbrush.h \
@@ -140,13 +146,16 @@ C:/Users/Lenovo/Documents/hostcomputer/build/Desktop_Qt_6_8_3_MinGW_64_bit-Debug
   D:/Qt/6.8.3/mingw_64/include/QtGui/qimage.h \
   D:/Qt/6.8.3/mingw_64/include/QtGui/qkeysequence.h \
   D:/Qt/6.8.3/mingw_64/include/QtGui/qpaintdevice.h \
+  D:/Qt/6.8.3/mingw_64/include/QtGui/qpainter.h \
   D:/Qt/6.8.3/mingw_64/include/QtGui/qpalette.h \
+  D:/Qt/6.8.3/mingw_64/include/QtGui/qpen.h \
   D:/Qt/6.8.3/mingw_64/include/QtGui/qpixelformat.h \
   D:/Qt/6.8.3/mingw_64/include/QtGui/qpixmap.h \
   D:/Qt/6.8.3/mingw_64/include/QtGui/qpolygon.h \
   D:/Qt/6.8.3/mingw_64/include/QtGui/qregion.h \
   D:/Qt/6.8.3/mingw_64/include/QtGui/qrgb.h \
   D:/Qt/6.8.3/mingw_64/include/QtGui/qrgba64.h \
+  D:/Qt/6.8.3/mingw_64/include/QtGui/qtextoption.h \
   D:/Qt/6.8.3/mingw_64/include/QtGui/qtgui-config.h \
   D:/Qt/6.8.3/mingw_64/include/QtGui/qtguiexports.h \
   D:/Qt/6.8.3/mingw_64/include/QtGui/qtguiglobal.h \
@@ -154,6 +163,7 @@ C:/Users/Lenovo/Documents/hostcomputer/build/Desktop_Qt_6_8_3_MinGW_64_bit-Debug
   D:/Qt/6.8.3/mingw_64/include/QtGui/qwindowdefs.h \
   D:/Qt/6.8.3/mingw_64/include/QtGui/qwindowdefs_win.h \
   D:/Qt/6.8.3/mingw_64/include/QtWidgets/QMainWindow \
+  D:/Qt/6.8.3/mingw_64/include/QtWidgets/QWidget \
   D:/Qt/6.8.3/mingw_64/include/QtWidgets/qmainwindow.h \
   D:/Qt/6.8.3/mingw_64/include/QtWidgets/qsizepolicy.h \
   D:/Qt/6.8.3/mingw_64/include/QtWidgets/qtabwidget.h \

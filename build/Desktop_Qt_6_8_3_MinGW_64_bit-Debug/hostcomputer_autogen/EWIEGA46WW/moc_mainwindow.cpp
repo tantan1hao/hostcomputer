@@ -47,7 +47,11 @@ static constexpr auto qt_meta_stringdata_ZN10MainWindowE = QtMocHelpers::stringD
     "on_action_about_triggered",
     "on_btn_clear_commands_clicked",
     "on_btn_clear_errors_clicked",
-    "updateSystemStatus"
+    "updateSystemStatus",
+    "onSerialDataReceived",
+    "data",
+    "showSerialPortSelection",
+    "refreshSerialPorts"
 );
 #else  // !QT_MOC_HAS_STRINGDATA
 #error "qtmochelpers.h not found or too old."
@@ -59,7 +63,7 @@ Q_CONSTINIT static const uint qt_meta_data_ZN10MainWindowE[] = {
       12,       // revision
        0,       // classname
        0,    0, // classinfo
-       9,   14, // methods
+      12,   14, // methods
        0,    0, // properties
        0,    0, // enums/sets
        0,    0, // constructors
@@ -67,15 +71,18 @@ Q_CONSTINIT static const uint qt_meta_data_ZN10MainWindowE[] = {
        0,       // signalCount
 
  // slots: name, argc, parameters, tag, flags, initial metatype offsets
-       1,    0,   68,    2, 0x08,    1 /* Private */,
-       3,    0,   69,    2, 0x08,    2 /* Private */,
-       4,    0,   70,    2, 0x08,    3 /* Private */,
-       5,    0,   71,    2, 0x08,    4 /* Private */,
-       6,    0,   72,    2, 0x08,    5 /* Private */,
-       7,    0,   73,    2, 0x08,    6 /* Private */,
-       8,    0,   74,    2, 0x08,    7 /* Private */,
-       9,    0,   75,    2, 0x08,    8 /* Private */,
-      10,    0,   76,    2, 0x08,    9 /* Private */,
+       1,    0,   86,    2, 0x08,    1 /* Private */,
+       3,    0,   87,    2, 0x08,    2 /* Private */,
+       4,    0,   88,    2, 0x08,    3 /* Private */,
+       5,    0,   89,    2, 0x08,    4 /* Private */,
+       6,    0,   90,    2, 0x08,    5 /* Private */,
+       7,    0,   91,    2, 0x08,    6 /* Private */,
+       8,    0,   92,    2, 0x08,    7 /* Private */,
+       9,    0,   93,    2, 0x08,    8 /* Private */,
+      10,    0,   94,    2, 0x08,    9 /* Private */,
+      11,    1,   95,    2, 0x08,   10 /* Private */,
+      13,    0,   98,    2, 0x08,   12 /* Private */,
+      14,    0,   99,    2, 0x08,   13 /* Private */,
 
  // slots: parameters
     QMetaType::Void,
@@ -85,6 +92,9 @@ Q_CONSTINIT static const uint qt_meta_data_ZN10MainWindowE[] = {
     QMetaType::Void,
     QMetaType::Void,
     QMetaType::Void,
+    QMetaType::Void,
+    QMetaType::Void,
+    QMetaType::Void, QMetaType::QByteArray,   12,
     QMetaType::Void,
     QMetaType::Void,
 
@@ -117,6 +127,13 @@ Q_CONSTINIT const QMetaObject MainWindow::staticMetaObject = { {
         // method 'on_btn_clear_errors_clicked'
         QtPrivate::TypeAndForceComplete<void, std::false_type>,
         // method 'updateSystemStatus'
+        QtPrivate::TypeAndForceComplete<void, std::false_type>,
+        // method 'onSerialDataReceived'
+        QtPrivate::TypeAndForceComplete<void, std::false_type>,
+        QtPrivate::TypeAndForceComplete<const QByteArray &, std::false_type>,
+        // method 'showSerialPortSelection'
+        QtPrivate::TypeAndForceComplete<void, std::false_type>,
+        // method 'refreshSerialPorts'
         QtPrivate::TypeAndForceComplete<void, std::false_type>
     >,
     nullptr
@@ -136,10 +153,12 @@ void MainWindow::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id, 
         case 6: _t->on_btn_clear_commands_clicked(); break;
         case 7: _t->on_btn_clear_errors_clicked(); break;
         case 8: _t->updateSystemStatus(); break;
+        case 9: _t->onSerialDataReceived((*reinterpret_cast< std::add_pointer_t<QByteArray>>(_a[1]))); break;
+        case 10: _t->showSerialPortSelection(); break;
+        case 11: _t->refreshSerialPorts(); break;
         default: ;
         }
     }
-    (void)_a;
 }
 
 const QMetaObject *MainWindow::metaObject() const
@@ -161,14 +180,14 @@ int MainWindow::qt_metacall(QMetaObject::Call _c, int _id, void **_a)
     if (_id < 0)
         return _id;
     if (_c == QMetaObject::InvokeMetaMethod) {
-        if (_id < 9)
+        if (_id < 12)
             qt_static_metacall(this, _c, _id, _a);
-        _id -= 9;
+        _id -= 12;
     }
     if (_c == QMetaObject::RegisterMethodArgumentMetaType) {
-        if (_id < 9)
+        if (_id < 12)
             *reinterpret_cast<QMetaType *>(_a[0]) = QMetaType();
-        _id -= 9;
+        _id -= 12;
     }
     return _id;
 }

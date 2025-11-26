@@ -1,0 +1,2 @@
+D:\Qt\Tools\mingw1310_64\bin\ar.exe qc libcommunication_layer.a CMakeFiles/communication_layer.dir/communication_layer_autogen/mocs_compilation.cpp.obj CMakeFiles/communication_layer.dir/canmanager.cpp.obj CMakeFiles/communication_layer.dir/serialportmanager.cpp.obj CMakeFiles/communication_layer.dir/ProtocolParser.cpp.obj
+D:\Qt\Tools\mingw1310_64\bin\ranlib.exe libcommunication_layer.a

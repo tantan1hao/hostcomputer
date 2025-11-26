@@ -16,9 +16,21 @@
 	"HEADERS" : 
 	[
 		[
+			"C:/Users/Lenovo/Documents/hostcomputer/src/communication/SharedStructs.h",
+			"MU",
+			"EWIEGA46WW/moc_SharedStructs.cpp",
+			null
+		],
+		[
 			"C:/Users/Lenovo/Documents/hostcomputer/src/communication/canmanager.h",
 			"MU",
 			"EWIEGA46WW/moc_canmanager.cpp",
+			null
+		],
+		[
+			"C:/Users/Lenovo/Documents/hostcomputer/src/communication/serialportmanager.h",
+			"MU",
+			"EWIEGA46WW/moc_serialportmanager.cpp",
 			null
 		]
 	],
@@ -95,6 +107,11 @@
 	[
 		[
 			"C:/Users/Lenovo/Documents/hostcomputer/src/communication/canmanager.cpp",
+			"MU",
+			null
+		],
+		[
+			"C:/Users/Lenovo/Documents/hostcomputer/src/communication/serialportmanager.cpp",
 			"MU",
 			null
 		]

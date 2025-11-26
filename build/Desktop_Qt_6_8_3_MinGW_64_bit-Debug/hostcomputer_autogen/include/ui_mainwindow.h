@@ -27,6 +27,7 @@
 #include <QtWidgets/QTextEdit>
 #include <QtWidgets/QVBoxLayout>
 #include <QtWidgets/QWidget>
+#include <videowidget.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -61,12 +62,12 @@ public:
     QHBoxLayout *horizontalLayout_main;
     QGroupBox *group_cameras;
     QGridLayout *gridLayout_cameras;
-    QLabel *camera_1;
-    QLabel *camera_2;
-    QLabel *camera_3;
-    QLabel *camera_4;
-    QLabel *camera_5;
-    QLabel *camera_6;
+    VideoWidget *camera_1;
+    VideoWidget *camera_2;
+    VideoWidget *camera_3;
+    VideoWidget *camera_4;
+    VideoWidget *camera_5;
+    VideoWidget *camera_6;
     QVBoxLayout *verticalLayout_right;
     QGroupBox *group_car_model;
     QVBoxLayout *verticalLayout_car_model;
@@ -121,8 +122,8 @@ public:
         verticalLayout_main->setContentsMargins(5, 5, 5, 5);
         frame_status = new QFrame(centralwidget);
         frame_status->setObjectName("frame_status");
-        frame_status->setFrameShape(QFrame::StyledPanel);
         frame_status->setMaximumSize(QSize(16777215, 80));
+        frame_status->setFrameShape(QFrame::Shape::StyledPanel);
         horizontalLayout_status = new QHBoxLayout(frame_status);
         horizontalLayout_status->setSpacing(15);
         horizontalLayout_status->setObjectName("horizontalLayout_status");
@@ -220,45 +221,39 @@ public:
         gridLayout_cameras = new QGridLayout(group_cameras);
         gridLayout_cameras->setSpacing(3);
         gridLayout_cameras->setObjectName("gridLayout_cameras");
-        camera_1 = new QLabel(group_cameras);
+        camera_1 = new VideoWidget(group_cameras);
         camera_1->setObjectName("camera_1");
         camera_1->setMinimumSize(QSize(390, 290));
-        camera_1->setAlignment(Qt::AlignCenter);
 
         gridLayout_cameras->addWidget(camera_1, 0, 0, 1, 1);
 
-        camera_2 = new QLabel(group_cameras);
+        camera_2 = new VideoWidget(group_cameras);
         camera_2->setObjectName("camera_2");
         camera_2->setMinimumSize(QSize(390, 290));
-        camera_2->setAlignment(Qt::AlignCenter);
 
         gridLayout_cameras->addWidget(camera_2, 0, 1, 1, 1);
 
-        camera_3 = new QLabel(group_cameras);
+        camera_3 = new VideoWidget(group_cameras);
         camera_3->setObjectName("camera_3");
         camera_3->setMinimumSize(QSize(390, 290));
-        camera_3->setAlignment(Qt::AlignCenter);
 
         gridLayout_cameras->addWidget(camera_3, 0, 2, 1, 1);
 
-        camera_4 = new QLabel(group_cameras);
+        camera_4 = new VideoWidget(group_cameras);
         camera_4->setObjectName("camera_4");
         camera_4->setMinimumSize(QSize(390, 290));
-        camera_4->setAlignment(Qt::AlignCenter);
 
         gridLayout_cameras->addWidget(camera_4, 1, 0, 1, 1);
 
-        camera_5 = new QLabel(group_cameras);
+        camera_5 = new VideoWidget(group_cameras);
         camera_5->setObjectName("camera_5");
         camera_5->setMinimumSize(QSize(390, 290));
-        camera_5->setAlignment(Qt::AlignCenter);
 
         gridLayout_cameras->addWidget(camera_5, 1, 1, 1, 1);
 
-        camera_6 = new QLabel(group_cameras);
+        camera_6 = new VideoWidget(group_cameras);
         camera_6->setObjectName("camera_6");
         camera_6->setMinimumSize(QSize(390, 290));
-        camera_6->setAlignment(Qt::AlignCenter);
 
         gridLayout_cameras->addWidget(camera_6, 1, 2, 1, 1);
 
@@ -276,7 +271,7 @@ public:
         car_model_display = new QLabel(group_car_model);
         car_model_display->setObjectName("car_model_display");
         car_model_display->setMinimumSize(QSize(380, 260));
-        car_model_display->setAlignment(Qt::AlignCenter);
+        car_model_display->setAlignment(Qt::AlignmentFlag::AlignCenter);
 
         verticalLayout_car_model->addWidget(car_model_display);
 
@@ -433,11 +428,11 @@ public:
         action_reset_layout->setText(QCoreApplication::translate("MainWindow", "\351\207\215\347\275\256\345\270\203\345\261\200", nullptr));
         action_about->setText(QCoreApplication::translate("MainWindow", "\345\205\263\344\272\216", nullptr));
         label_connection_status->setText(QCoreApplication::translate("MainWindow", "\350\277\236\346\216\245\347\212\266\346\200\201:", nullptr));
-        label_connection_value->setText(QCoreApplication::translate("MainWindow", "\346\226\255\345\274\200", nullptr));
         label_connection_value->setStyleSheet(QCoreApplication::translate("MainWindow", "color: red; font-weight: bold;", nullptr));
+        label_connection_value->setText(QCoreApplication::translate("MainWindow", "\346\226\255\345\274\200", nullptr));
         label_heartbeat->setText(QCoreApplication::translate("MainWindow", "\344\270\213\344\275\215\346\234\272\345\277\203\350\267\263:", nullptr));
-        label_heartbeat_value->setText(QCoreApplication::translate("MainWindow", "\344\270\242\345\244\261", nullptr));
         label_heartbeat_value->setStyleSheet(QCoreApplication::translate("MainWindow", "color: red; font-weight: bold;", nullptr));
+        label_heartbeat_value->setText(QCoreApplication::translate("MainWindow", "\344\270\242\345\244\261", nullptr));
         label_fps->setText(QCoreApplication::translate("MainWindow", "\345\275\223\345\211\215\345\270\247\347\216\207:", nullptr));
         label_fps_value->setText(QCoreApplication::translate("MainWindow", "0 FPS", nullptr));
         label_cpu->setText(QCoreApplication::translate("MainWindow", "CPU/GPU:", nullptr));
@@ -445,18 +440,12 @@ public:
         label_mode->setText(QCoreApplication::translate("MainWindow", "\347\224\265\346\234\272\346\250\241\345\274\217:", nullptr));
         label_mode_value->setText(QCoreApplication::translate("MainWindow", "\345\276\205\346\234\272", nullptr));
         group_cameras->setTitle(QCoreApplication::translate("MainWindow", "\347\233\270\346\234\272\347\224\273\351\235\242", nullptr));
-        camera_1->setStyleSheet(QCoreApplication::translate("MainWindow", "border: 2px solid #cccccc; background-color: #f0f0f0;", nullptr));
-        camera_1->setText(QCoreApplication::translate("MainWindow", "\347\233\270\346\234\272 1", nullptr));
-        camera_2->setStyleSheet(QCoreApplication::translate("MainWindow", "border: 2px solid #cccccc; background-color: #f0f0f0;", nullptr));
-        camera_2->setText(QCoreApplication::translate("MainWindow", "\347\233\270\346\234\272 2", nullptr));
-        camera_3->setStyleSheet(QCoreApplication::translate("MainWindow", "border: 2px solid #cccccc; background-color: #f0f0f0;", nullptr));
-        camera_3->setText(QCoreApplication::translate("MainWindow", "\347\233\270\346\234\272 3", nullptr));
-        camera_4->setStyleSheet(QCoreApplication::translate("MainWindow", "border: 2px solid #cccccc; background-color: #f0f0f0;", nullptr));
-        camera_4->setText(QCoreApplication::translate("MainWindow", "\347\233\270\346\234\272 4", nullptr));
-        camera_5->setStyleSheet(QCoreApplication::translate("MainWindow", "border: 2px solid #cccccc; background-color: #f0f0f0;", nullptr));
-        camera_5->setText(QCoreApplication::translate("MainWindow", "\347\233\270\346\234\272 5", nullptr));
-        camera_6->setStyleSheet(QCoreApplication::translate("MainWindow", "border: 2px solid #cccccc; background-color: #f0f0f0;", nullptr));
-        camera_6->setText(QCoreApplication::translate("MainWindow", "\347\233\270\346\234\272 6", nullptr));
+        camera_1->setStyleSheet(QCoreApplication::translate("MainWindow", "border: 2px solid #cccccc; background-color: #000000;", nullptr));
+        camera_2->setStyleSheet(QCoreApplication::translate("MainWindow", "border: 2px solid #cccccc; background-color: #000000;", nullptr));
+        camera_3->setStyleSheet(QCoreApplication::translate("MainWindow", "border: 2px solid #cccccc; background-color: #000000;", nullptr));
+        camera_4->setStyleSheet(QCoreApplication::translate("MainWindow", "border: 2px solid #cccccc; background-color: #000000;", nullptr));
+        camera_5->setStyleSheet(QCoreApplication::translate("MainWindow", "border: 2px solid #cccccc; background-color: #000000;", nullptr));
+        camera_6->setStyleSheet(QCoreApplication::translate("MainWindow", "border: 2px solid #cccccc; background-color: #000000;", nullptr));
         group_car_model->setTitle(QCoreApplication::translate("MainWindow", "\345\260\217\350\275\246\345\247\277\346\200\201\346\250\241\345\236\213", nullptr));
         car_model_display->setStyleSheet(QCoreApplication::translate("MainWindow", "border: 2px solid #cccccc; background-color: #f8f8f8;", nullptr));
         car_model_display->setText(QCoreApplication::translate("MainWindow", "3D\345\247\277\346\200\201\346\250\241\345\236\213\346\230\276\347\244\272\345\214\272\345\237\237", nullptr));

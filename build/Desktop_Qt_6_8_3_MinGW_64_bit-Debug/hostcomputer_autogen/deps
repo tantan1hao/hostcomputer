@@ -9,7 +9,11 @@ hostcomputer_autogen/timestamp: \
 	C:/Users/Lenovo/Documents/hostcomputer/main.cpp \
 	C:/Users/Lenovo/Documents/hostcomputer/mainwindow.cpp \
 	C:/Users/Lenovo/Documents/hostcomputer/mainwindow.h \
+	C:/Users/Lenovo/Documents/hostcomputer/src/controller/VideoWidget.h \
+	C:/Users/Lenovo/Documents/hostcomputer/src/parser/motor_state.h \
+	D:/Qt/6.8.3/mingw_64/include/QtCore/QByteArray \
 	D:/Qt/6.8.3/mingw_64/include/QtCore/QDateTime \
+	D:/Qt/6.8.3/mingw_64/include/QtCore/QString \
 	D:/Qt/6.8.3/mingw_64/include/QtCore/QTimer \
 	D:/Qt/6.8.3/mingw_64/include/QtCore/q20functional.h \
 	D:/Qt/6.8.3/mingw_64/include/QtCore/q20iterator.h \
@@ -137,6 +141,8 @@ hostcomputer_autogen/timestamp: \
 	D:/Qt/6.8.3/mingw_64/include/QtCore/qversiontagging.h \
 	D:/Qt/6.8.3/mingw_64/include/QtCore/qxptype_traits.h \
 	D:/Qt/6.8.3/mingw_64/include/QtCore/qyieldcpu.h \
+	D:/Qt/6.8.3/mingw_64/include/QtGui/QPainter \
+	D:/Qt/6.8.3/mingw_64/include/QtGui/QPixmap \
 	D:/Qt/6.8.3/mingw_64/include/QtGui/qaction.h \
 	D:/Qt/6.8.3/mingw_64/include/QtGui/qbitmap.h \
 	D:/Qt/6.8.3/mingw_64/include/QtGui/qbrush.h \
@@ -149,13 +155,16 @@ hostcomputer_autogen/timestamp: \
 	D:/Qt/6.8.3/mingw_64/include/QtGui/qimage.h \
 	D:/Qt/6.8.3/mingw_64/include/QtGui/qkeysequence.h \
 	D:/Qt/6.8.3/mingw_64/include/QtGui/qpaintdevice.h \
+	D:/Qt/6.8.3/mingw_64/include/QtGui/qpainter.h \
 	D:/Qt/6.8.3/mingw_64/include/QtGui/qpalette.h \
+	D:/Qt/6.8.3/mingw_64/include/QtGui/qpen.h \
 	D:/Qt/6.8.3/mingw_64/include/QtGui/qpixelformat.h \
 	D:/Qt/6.8.3/mingw_64/include/QtGui/qpixmap.h \
 	D:/Qt/6.8.3/mingw_64/include/QtGui/qpolygon.h \
 	D:/Qt/6.8.3/mingw_64/include/QtGui/qregion.h \
 	D:/Qt/6.8.3/mingw_64/include/QtGui/qrgb.h \
 	D:/Qt/6.8.3/mingw_64/include/QtGui/qrgba64.h \
+	D:/Qt/6.8.3/mingw_64/include/QtGui/qtextoption.h \
 	D:/Qt/6.8.3/mingw_64/include/QtGui/qtgui-config.h \
 	D:/Qt/6.8.3/mingw_64/include/QtGui/qtguiexports.h \
 	D:/Qt/6.8.3/mingw_64/include/QtGui/qtguiglobal.h \
@@ -163,6 +172,7 @@ hostcomputer_autogen/timestamp: \
 	D:/Qt/6.8.3/mingw_64/include/QtGui/qwindowdefs.h \
 	D:/Qt/6.8.3/mingw_64/include/QtGui/qwindowdefs_win.h \
 	D:/Qt/6.8.3/mingw_64/include/QtWidgets/QMainWindow \
+	D:/Qt/6.8.3/mingw_64/include/QtWidgets/QWidget \
 	D:/Qt/6.8.3/mingw_64/include/QtWidgets/qmainwindow.h \
 	D:/Qt/6.8.3/mingw_64/include/QtWidgets/qsizepolicy.h \
 	D:/Qt/6.8.3/mingw_64/include/QtWidgets/qtabwidget.h \
@@ -338,6 +348,32 @@ hostcomputer_autogen/timestamp: \
 	D:/Qt/6.8.3/mingw_64/lib/cmake/Qt6GuiTools/Qt6GuiToolsTargets-relwithdebinfo.cmake \
 	D:/Qt/6.8.3/mingw_64/lib/cmake/Qt6GuiTools/Qt6GuiToolsTargets.cmake \
 	D:/Qt/6.8.3/mingw_64/lib/cmake/Qt6GuiTools/Qt6GuiToolsVersionlessTargets.cmake \
+	D:/Qt/6.8.3/mingw_64/lib/cmake/Qt6Multimedia/Qt6MultimediaAdditionalTargetInfo.cmake \
+	D:/Qt/6.8.3/mingw_64/lib/cmake/Qt6Multimedia/Qt6MultimediaConfig.cmake \
+	D:/Qt/6.8.3/mingw_64/lib/cmake/Qt6Multimedia/Qt6MultimediaConfigVersion.cmake \
+	D:/Qt/6.8.3/mingw_64/lib/cmake/Qt6Multimedia/Qt6MultimediaConfigVersionImpl.cmake \
+	D:/Qt/6.8.3/mingw_64/lib/cmake/Qt6Multimedia/Qt6MultimediaDependencies.cmake \
+	D:/Qt/6.8.3/mingw_64/lib/cmake/Qt6Multimedia/Qt6MultimediaMacros.cmake \
+	D:/Qt/6.8.3/mingw_64/lib/cmake/Qt6Multimedia/Qt6MultimediaPlugins.cmake \
+	D:/Qt/6.8.3/mingw_64/lib/cmake/Qt6Multimedia/Qt6MultimediaTargets-relwithdebinfo.cmake \
+	D:/Qt/6.8.3/mingw_64/lib/cmake/Qt6Multimedia/Qt6MultimediaTargets.cmake \
+	D:/Qt/6.8.3/mingw_64/lib/cmake/Qt6Multimedia/Qt6MultimediaVersionlessAliasTargets.cmake \
+	D:/Qt/6.8.3/mingw_64/lib/cmake/Qt6Multimedia/Qt6QFFmpegMediaPluginAdditionalTargetInfo.cmake \
+	D:/Qt/6.8.3/mingw_64/lib/cmake/Qt6Multimedia/Qt6QFFmpegMediaPluginConfig.cmake \
+	D:/Qt/6.8.3/mingw_64/lib/cmake/Qt6Multimedia/Qt6QFFmpegMediaPluginTargets-relwithdebinfo.cmake \
+	D:/Qt/6.8.3/mingw_64/lib/cmake/Qt6Multimedia/Qt6QFFmpegMediaPluginTargets.cmake \
+	D:/Qt/6.8.3/mingw_64/lib/cmake/Qt6Multimedia/Qt6QWindowsMediaPluginAdditionalTargetInfo.cmake \
+	D:/Qt/6.8.3/mingw_64/lib/cmake/Qt6Multimedia/Qt6QWindowsMediaPluginConfig.cmake \
+	D:/Qt/6.8.3/mingw_64/lib/cmake/Qt6Multimedia/Qt6QWindowsMediaPluginTargets-relwithdebinfo.cmake \
+	D:/Qt/6.8.3/mingw_64/lib/cmake/Qt6Multimedia/Qt6QWindowsMediaPluginTargets.cmake \
+	D:/Qt/6.8.3/mingw_64/lib/cmake/Qt6MultimediaWidgets/Qt6MultimediaWidgetsAdditionalTargetInfo.cmake \
+	D:/Qt/6.8.3/mingw_64/lib/cmake/Qt6MultimediaWidgets/Qt6MultimediaWidgetsConfig.cmake \
+	D:/Qt/6.8.3/mingw_64/lib/cmake/Qt6MultimediaWidgets/Qt6MultimediaWidgetsConfigVersion.cmake \
+	D:/Qt/6.8.3/mingw_64/lib/cmake/Qt6MultimediaWidgets/Qt6MultimediaWidgetsConfigVersionImpl.cmake \
+	D:/Qt/6.8.3/mingw_64/lib/cmake/Qt6MultimediaWidgets/Qt6MultimediaWidgetsDependencies.cmake \
+	D:/Qt/6.8.3/mingw_64/lib/cmake/Qt6MultimediaWidgets/Qt6MultimediaWidgetsTargets-relwithdebinfo.cmake \
+	D:/Qt/6.8.3/mingw_64/lib/cmake/Qt6MultimediaWidgets/Qt6MultimediaWidgetsTargets.cmake \
+	D:/Qt/6.8.3/mingw_64/lib/cmake/Qt6MultimediaWidgets/Qt6MultimediaWidgetsVersionlessAliasTargets.cmake \
 	D:/Qt/6.8.3/mingw_64/lib/cmake/Qt6Network/Qt6NetworkAdditionalTargetInfo.cmake \
 	D:/Qt/6.8.3/mingw_64/lib/cmake/Qt6Network/Qt6NetworkConfig.cmake \
 	D:/Qt/6.8.3/mingw_64/lib/cmake/Qt6Network/Qt6NetworkConfigVersion.cmake \

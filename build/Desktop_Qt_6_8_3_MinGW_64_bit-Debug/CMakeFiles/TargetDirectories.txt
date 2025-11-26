@@ -24,5 +24,3 @@ C:/Users/Lenovo/Documents/hostcomputer/build/Desktop_Qt_6_8_3_MinGW_64_bit-Debug
 C:/Users/Lenovo/Documents/hostcomputer/build/Desktop_Qt_6_8_3_MinGW_64_bit-Debug/src/model/CMakeFiles/rebuild_cache.dir
 C:/Users/Lenovo/Documents/hostcomputer/build/Desktop_Qt_6_8_3_MinGW_64_bit-Debug/src/model/CMakeFiles/model_layer_autogen_timestamp_deps.dir
 C:/Users/Lenovo/Documents/hostcomputer/build/Desktop_Qt_6_8_3_MinGW_64_bit-Debug/src/model/CMakeFiles/model_layer_autogen.dir
-C:/Users/Lenovo/Documents/hostcomputer/build/Desktop_Qt_6_8_3_MinGW_64_bit-Debug/resources/CMakeFiles/edit_cache.dir
-C:/Users/Lenovo/Documents/hostcomputer/build/Desktop_Qt_6_8_3_MinGW_64_bit-Debug/resources/CMakeFiles/rebuild_cache.dir

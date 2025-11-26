@@ -4,6 +4,16 @@
 #include <QMainWindow>
 #include <QTimer>
 #include <QDateTime>
+#include "src/parser/motor_state.h"
+#include "src/controller/VideoWidget.h"
+
+namespace Communication {
+    class SerialPortManager;
+}
+namespace Parser {
+    class ProtocolParser;
+}
+class CameraManager;
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -28,6 +38,7 @@ public:
     void addCommand(const QString& command);
     void addError(const QString& error);
     void updateCarAttitude(double roll, double pitch, double yaw);
+    void updateJointsData(const MotorState& motorState);
 
 protected:
     void closeEvent(QCloseEvent *event) override;
@@ -46,6 +57,8 @@ private slots:
     void updateSystemStatus();  // 定时更新系统状态
 
 private:
+    void setupSerialPort();
+    void setupParser();
     void setupConnections();
     void setupStatusBar();
     void updateConnectionDisplay();
@@ -53,9 +66,20 @@ private:
     void formatAndAddCommand(const QString& command);
     void formatAndAddError(const QString& error);
     QString getCurrentTimestamp() const;
+    QStringList getAvailableSerialPorts();
+    bool connectToSerialPort(const QString& portName, int baudRate);
+
+private slots:
+    void onSerialDataReceived(const QByteArray &data);
+    void showSerialPortSelection();
+    void refreshSerialPorts();
 
 private:
     Ui::MainWindow *ui;
+
+    // 串口和解析器组件
+    Communication::SerialPortManager* m_serialManager;
+    Parser::ProtocolParser* m_protocolParser;
 
     // 状态管理
     bool m_isConnected = false;

@@ -1,0 +1,1 @@
+-IC:/Users/Lenovo/Documents/hostcomputer/build/src/controller/controller_layer_autogen/include -IC:/Users/Lenovo/Documents/hostcomputer/src/controller -isystem D:/Qt/6.8.3/mingw_64/include/QtCore -isystem D:/Qt/6.8.3/mingw_64/include -isystem "D:/Qt/6.8.3/mingw_64/mkspecs/win32-g++"

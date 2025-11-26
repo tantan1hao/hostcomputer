@@ -1,0 +1,2 @@
+D:\Qt\Tools\mingw1310_64\bin\ar.exe qc libmodel_layer.a CMakeFiles/model_layer.dir/model_layer_autogen/mocs_compilation.cpp.obj CMakeFiles/model_layer.dir/motormodel.cpp.obj
+D:\Qt\Tools\mingw1310_64\bin\ranlib.exe libmodel_layer.a

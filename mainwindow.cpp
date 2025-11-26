@@ -1,13 +1,30 @@
 #include "mainwindow.h"
 #include "./ui_mainwindow.h"
+#include "src/communication/serialportmanager.h"
+#include "src/parser/ProtocolParser.h"
+#include "src/communication/SharedStructs.h"
+
 #include <QCloseEvent>
 #include <QMessageBox>
 #include <QStatusBar>
 #include <QDebug>
+#include <QDateTime>
+#include <QInputDialog>
+#include <QDialog>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QPushButton>
+#include <QComboBox>
+#include <QDialogButtonBox>
+#include <QShortcut>
+#include <QKeySequence>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
+    , m_serialManager(nullptr)
+    , m_protocolParser(nullptr)
 {
     ui->setupUi(this);
 
@@ -15,6 +32,10 @@ MainWindow::MainWindow(QWidget *parent)
     setWindowTitle("电机控制系统上位机 v1.0");
     resize(1920, 1080);
     setMinimumSize(1600, 900);
+
+    // 初始化组件
+    setupSerialPort();
+    setupParser();
 
     // 初始化定时器
     m_statusTimer = new QTimer(this);
@@ -24,6 +45,10 @@ MainWindow::MainWindow(QWidget *parent)
     // 设置连接和状态栏
     setupConnections();
     setupStatusBar();
+
+    // 设置F5快捷键刷新串口列表
+    QShortcut* refreshShortcut = new QShortcut(QKeySequence(Qt::Key_F5), this);
+    connect(refreshShortcut, &QShortcut::activated, this, &MainWindow::refreshSerialPorts);
 
     // 初始化UI状态
     updateConnectionDisplay();
@@ -38,6 +63,30 @@ MainWindow::~MainWindow()
         m_statusTimer->stop();
     }
     delete ui;
+}
+
+void MainWindow::setupSerialPort()
+{
+    // 创建串口管理器
+    m_serialManager = new Communication::SerialPortManager(this);
+
+    // 连接串口数据接收信号
+    connect(m_serialManager, &Communication::SerialPortManager::dataReceived,
+            this, &MainWindow::onSerialDataReceived);
+
+    // 连接连接状态变化信号
+    connect(m_serialManager, &Communication::SerialPortManager::connectionStatusChanged,
+            this, &MainWindow::updateConnectionStatus);
+
+    qDebug() << "串口管理器初���化完成";
+}
+
+void MainWindow::setupParser()
+{
+    // 创建协议解析器
+    m_protocolParser = new Parser::ProtocolParser();
+
+    qDebug() << "协议解析器初始化完成";
 }
 
 void MainWindow::setupConnections()
@@ -119,6 +168,31 @@ void MainWindow::updateCarAttitude(double roll, double pitch, double yaw)
     // TODO: 这里可以更新3D姿态模型显示
 }
 
+void MainWindow::updateJointsData(const MotorState& motorState)
+{
+    // 清空text_errors控件
+    ui->text_errors->clear();
+
+    // 获取关节数据的格式化字符串并显示
+    QString jointsData = motorState.getJointsDataString();
+
+    // 添加时间戳
+    QString timestamp = getCurrentTimestamp();
+    QString header = QString("[%1] 6关节数据接收\n").arg(timestamp);
+
+    // 设置文本内容
+    ui->text_errors->setText(header + jointsData);
+
+    // 可选：滚动到底部
+    QTextCursor cursor = ui->text_errors->textCursor();
+    cursor.movePosition(QTextCursor::End);
+    ui->text_errors->setTextCursor(cursor);
+    ui->text_errors->ensureCursorVisible();
+
+    // 同时在命令区域显示接收消息
+    addCommand("[数据] 已接收并显示6关节数据");
+}
+
 void MainWindow::closeEvent(QCloseEvent *event)
 {
     QMessageBox::StandardButton reply = QMessageBox::question(
@@ -143,14 +217,18 @@ void MainWindow::closeEvent(QCloseEvent *event)
 // 菜单槽函数
 void MainWindow::on_action_connect_triggered()
 {
-    // TODO: 实现连接逻辑
-    updateConnectionStatus(true);
-    addCommand("[操作] 用户点击连接设备");
+    // 显示串口选择对话框
+    showSerialPortSelection();
 }
 
 void MainWindow::on_action_disconnect_triggered()
 {
-    // TODO: 实现断开连接逻辑
+    if (!m_serialManager) {
+        addError("[错误] 串口管理器未初始化");
+        return;
+    }
+
+    m_serialManager->closePort();
     updateConnectionStatus(false);
     addCommand("[操作] 用户点击断开连接");
 }
@@ -294,4 +372,176 @@ void MainWindow::formatAndAddError(const QString& error)
 QString MainWindow::getCurrentTimestamp() const
 {
     return QDateTime::currentDateTime().toString("hh:mm:ss");
+}
+
+QStringList MainWindow::getAvailableSerialPorts()
+{
+    if (!m_serialManager) {
+        return QStringList();
+    }
+    return m_serialManager->getAvailablePorts();
+}
+
+bool MainWindow::connectToSerialPort(const QString& portName, int baudRate)
+{
+    if (!m_serialManager) {
+        addError("[错误] 串口管理器未初始化");
+        return false;
+    }
+
+    bool success = m_serialManager->openPort(portName, baudRate);
+
+    if (success) {
+        updateConnectionStatus(true);
+        addCommand(QString("[串口] 成功连接 %1, 波特率: %2").arg(portName).arg(baudRate));
+    } else {
+        addError(QString("[错误] 串口连接失败 %1, 波特率: %2").arg(portName).arg(baudRate));
+    }
+
+    return success;
+}
+
+void MainWindow::showSerialPortSelection()
+{
+    // 创建自定义对话框
+    QDialog dialog(this);
+    dialog.setWindowTitle("选择串口设备");
+    dialog.resize(400, 200);
+
+    QVBoxLayout* layout = new QVBoxLayout(&dialog);
+
+    // 添加说明标签
+    QLabel* infoLabel = new QLabel("请选择串口设备和波特率进行连接:");
+    layout->addWidget(infoLabel);
+
+    // 串口选择
+    QHBoxLayout* portLayout = new QHBoxLayout();
+    portLayout->addWidget(new QLabel("串口:"));
+    QComboBox* portCombo = new QComboBox();
+    portCombo->setMinimumWidth(200);
+    portLayout->addWidget(portCombo);
+    layout->addLayout(portLayout);
+
+    // 波特率选择
+    QHBoxLayout* baudLayout = new QHBoxLayout();
+    baudLayout->addWidget(new QLabel("波特率:"));
+    QComboBox* baudCombo = new QComboBox();
+    baudCombo->addItems({"9600", "19200", "38400", "57600", "115200", "230400", "460800", "921600"});
+    baudCombo->setCurrentText("115200");
+    baudCombo->setMinimumWidth(200);
+    baudLayout->addWidget(baudCombo);
+    layout->addLayout(baudLayout);
+
+    // 按钮区域
+    QHBoxLayout* buttonLayout = new QHBoxLayout();
+    QPushButton* refreshButton = new QPushButton("刷新串口列表");
+    buttonLayout->addWidget(refreshButton);
+    buttonLayout->addStretch();
+
+    QDialogButtonBox* buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    buttonLayout->addWidget(buttonBox);
+    layout->addLayout(buttonLayout);
+
+    // 刷新串口列表的函数
+    auto refreshPorts = [&]() {
+        QStringList availablePorts = getAvailableSerialPorts();
+        portCombo->clear();
+        portCombo->addItems(availablePorts);
+
+        if (availablePorts.isEmpty()) {
+            addCommand("[系统] 串口刷新完成 - 未发现可用串口");
+        } else {
+            addCommand(QString("[系统] 串口刷新完成 - 发现 %1 个可用串口").arg(availablePorts.size()));
+        }
+    };
+
+    // 连接刷新按钮
+    connect(refreshButton, &QPushButton::clicked, refreshPorts);
+
+    // 连接按钮
+    connect(buttonBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+    // 初始化串口列表
+    refreshPorts();
+
+    // 如果没有可用串口，显示提示
+    if (portCombo->count() == 0) {
+        QMessageBox::warning(this, "Serial Port Error",
+            "No serial port devices detected.\n"
+            "Please check device connection and click 'Refresh Serial Port List' button to retry.\n\n"
+            "Common causes:\n"
+            "- USB to serial driver not installed\n"
+            "- Device not connected\n"
+            "- Device occupied by other programs");
+    }
+
+    // 显示对话框
+    if (dialog.exec() == QDialog::Accepted) {
+        QString selectedPort = portCombo->currentText();
+        int selectedBaudRate = baudCombo->currentText().toInt();
+
+        if (!selectedPort.isEmpty()) {
+            // 连接选中的串口
+            connectToSerialPort(selectedPort, selectedBaudRate);
+        }
+    }
+}
+
+void MainWindow::refreshSerialPorts()
+{
+    QStringList availablePorts = getAvailableSerialPorts();
+
+    if (availablePorts.isEmpty()) {
+        addCommand("[快捷键F5] 串口刷新完成 - 未发现可用串口");
+        statusBar()->showMessage("未发现可用串口设备", 3000);
+    } else {
+        addCommand(QString("[快捷键F5] 串口刷新完成 - 发现 %1 个可用串口: %2")
+                   .arg(availablePorts.size())
+                   .arg(availablePorts.join(", ")));
+        statusBar()->showMessage(QString("发现 %1 个可用串口").arg(availablePorts.size()), 3000);
+    }
+}
+
+void MainWindow::onSerialDataReceived(const QByteArray &data)
+{
+    qDebug() << "��收到串口数据，长度:" << data.size();
+
+    if (!m_protocolParser) {
+        qDebug() << "协议解析器未初始化";
+        return;
+    }
+
+    // 尝试解析协议帧
+    Communication::ESP32State esp32State;
+    if (m_protocolParser->parseFromQByteArray(data, &esp32State)) {
+        qDebug() << "协议解析成功";
+
+        // 转换为MotorState用于显示
+        MotorState displayState;
+        displayState.isOnline = true;
+        displayState.isRunning = true;
+        displayState.hasError = false;
+        displayState.timestamp = QDateTime::currentMSecsSinceEpoch();
+
+        // 转换6个关节数据
+        for (int i = 0; i < 6; ++i) {
+            displayState.joints[i].position = esp32State.joints[i].position / 1000.0f;  // 缩小1000倍
+            displayState.joints[i].current = esp32State.joints[i].current / 1000.0f;    // 缩小1000倍
+            displayState.joints[i].executor_position = esp32State.executor_position / 1000.0f;
+            displayState.joints[i].executor_torque = esp32State.executor_torque / 1000.0f;
+            displayState.joints[i].executor_flags = esp32State.executor_flags;
+            displayState.joints[i].reserved = esp32State.reserved;
+        }
+
+        // 更新UI显示
+        updateJointsData(displayState);
+
+        // 在命令区域添加接收消息
+        addCommand("[串口] 接收并解析关节数据成功");
+
+    } else {
+        qDebug() << "协议解析失败";
+        addError("[错误] 协议帧解析失败");
+    }
 }

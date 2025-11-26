@@ -1,0 +1,9 @@
+-rootPath
+C:/Users/Lenovo/Documents/hostcomputer
+-cmake-output
+-output-file
+C:/Users/Lenovo/Documents/hostcomputer/build/.qt/qml_imports/hostcomputer_conf.cmake
+-importPath
+C:/Users/Lenovo/Documents/hostcomputer/build
+-importPath
+D:/Qt/6.8.3/mingw_64/qml

@@ -1,14 +1,14 @@
 # ============================================
-# Model B (pn!‹B)
+# Model B (pn!ï¿½B)
 # ============================================
 # L#
-#   - : UI Ğ›ïÑš„pn!‹ (QObject + Q_PROPERTY)
-#   - Ç signal/slot ô° UI
+#   - : UI Ğ›ï¿½Ñšï¿½pn!ï¿½ (QObject + Q_PROPERTY)
+#   - ï¿½ signal/slot ï¿½ï¿½ UI
 #
-# VÄ
-#   - êıV Qt::Core
-#   - ıV Parser / Communication / Controller
-#   - 1 Controller #ô° Model pn
+# ï¿½Vï¿½
+#   - ï¿½ï¿½ï¿½V Qt::Core
+#   - ï¿½ï¿½V Parser / Communication / Controller
+#   - 1 Controller #ï¿½ï¿½ Model pn
 # ============================================
 
 set(MODEL_SOURCES
@@ -16,15 +16,17 @@ set(MODEL_SOURCES
     motormodel.h
 )
 
-# úY“
+# ï¿½Yï¿½
 add_library(model_layer STATIC ${MODEL_SOURCES})
 
-# ş¥ Qt::Core
-target_link_libraries(model_layer PUBLIC
-    Qt6::Core
-)
+# é“¾æ¥Qt::Core - æ”¯æŒQt5/Qt6
+if(QT_VERSION EQUAL 6)
+    target_link_libraries(model_layer PUBLIC Qt6::Core)
+else()
+    target_link_libraries(model_layer PUBLIC Qt5::Core)
+endif()
 
-# ¾n4‡ö+ï„
+# ï¿½n4ï¿½ï¿½+ï¿½
 target_include_directories(model_layer PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
 )

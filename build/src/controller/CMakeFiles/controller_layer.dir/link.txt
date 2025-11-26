@@ -1,0 +1,2 @@
+D:\Qt\Tools\mingw1310_64\bin\ar.exe qc libcontroller_layer.a CMakeFiles/controller_layer.dir/controller_layer_autogen/mocs_compilation.cpp.obj CMakeFiles/controller_layer.dir/controller.cpp.obj
+D:\Qt\Tools\mingw1310_64\bin\ranlib.exe libcontroller_layer.a
