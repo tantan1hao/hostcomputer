@@ -48,6 +48,11 @@ target_link_libraries(controller_layer PUBLIC
     # communication_layer
 )
 
+# Windows平台链接XInput库（手柄驱动）
+if(WIN32)
+    target_link_libraries(controller_layer PUBLIC xinput)
+endif()
+
 # 设置包含目录
 target_include_directories(controller_layer PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}

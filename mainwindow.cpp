@@ -92,7 +92,7 @@ MainWindow::MainWindow(QWidget *parent)
     // 默认启用键盘控制
     m_keyboardController->setEnabled(true);
 
-    // 初始化手柄输入驱动 (UDP端口9700)
+    // 初始化手柄输入驱动 (XInput本地轮询)
     m_handleKey = new HandleKey(this);
     connect(m_handleKey, &HandleKey::getHandleKey,
             this, &MainWindow::onGamepadStateReceived);
@@ -901,12 +901,7 @@ void MainWindow::onGamepadStateReceived(const ControllerState &state)
         float lt = state.bLeftTrigger / 255.0f;
         float rt = state.bRightTrigger / 255.0f;
 
-        m_gamepadWidget->updateAxis("LX", lx);
-        m_gamepadWidget->updateAxis("LY", ly);
-        m_gamepadWidget->updateAxis("RX", rx);
-        m_gamepadWidget->updateAxis("RY", ry);
-        m_gamepadWidget->updateAxis("LT", lt);
-        m_gamepadWidget->updateAxis("RT", rt);
+        m_gamepadWidget->updateAll(lx, ly, rx, ry, lt, rt);
 
         // 按钮状态显示
         if (state.buttonA) m_gamepadWidget->updateButton("A", true);

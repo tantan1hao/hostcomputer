@@ -1,61 +1,72 @@
 #include "handlekey.h"
+#include <QDebug>
+#include <cstring>
+
+#ifdef Q_OS_WIN
+#include <windows.h>
+#include <xinput.h>
+#endif
 
 HandleKey::HandleKey(QObject *parent)
     : QObject{parent}
 {
-    UDPSocket = new QUdpSocket(this);
-    UDPSocket->bind(9700, QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint);
-
-    connect(UDPSocket, &QUdpSocket::readyRead, this, &HandleKey::receiveData);
+    timer = new QTimer(this);
+    connect(timer, &QTimer::timeout, this, &HandleKey::readGamepad);
+    timer->start(20); // 50Hz 轮询
 }
 
-void HandleKey::receiveData(){
-    QByteArray array;
-    array.resize(UDPSocket->bytesAvailable());
-    UDPSocket->readDatagram(array.data(),array.size());
-    decode(array);
-    //qDebug("decode");
-    emit getHandleKey(state);
+void HandleKey::readGamepad()
+{
+#ifdef Q_OS_WIN
+    XINPUT_STATE xinputState;
+    ZeroMemory(&xinputState, sizeof(XINPUT_STATE));
+
+    DWORD result = XInputGetState(0, &xinputState);
+    if (result != ERROR_SUCCESS) {
+        return; // 手柄未连接
+    }
+
+    const XINPUT_GAMEPAD &gp = xinputState.Gamepad;
+
+    ControllerState newState = {};
+
+    // 按钮
+    newState.buttonA        = (gp.wButtons & XINPUT_GAMEPAD_A) != 0;
+    newState.buttonB        = (gp.wButtons & XINPUT_GAMEPAD_B) != 0;
+    newState.buttonX        = (gp.wButtons & XINPUT_GAMEPAD_X) != 0;
+    newState.buttonY        = (gp.wButtons & XINPUT_GAMEPAD_Y) != 0;
+    newState.buttonStart    = (gp.wButtons & XINPUT_GAMEPAD_START) != 0;
+    newState.buttonBack     = (gp.wButtons & XINPUT_GAMEPAD_BACK) != 0;
+    newState.dpadUp         = (gp.wButtons & XINPUT_GAMEPAD_DPAD_UP) != 0;
+    newState.dpadDown       = (gp.wButtons & XINPUT_GAMEPAD_DPAD_DOWN) != 0;
+    newState.dpadLeft       = (gp.wButtons & XINPUT_GAMEPAD_DPAD_LEFT) != 0;
+    newState.dpadRight      = (gp.wButtons & XINPUT_GAMEPAD_DPAD_RIGHT) != 0;
+    newState.leftThumb      = (gp.wButtons & XINPUT_GAMEPAD_LEFT_THUMB) != 0;
+    newState.rightThumb     = (gp.wButtons & XINPUT_GAMEPAD_RIGHT_THUMB) != 0;
+    newState.leftShoulder   = (gp.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0;
+    newState.rightShoulder  = (gp.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0;
+
+    // 摇杆
+    newState.sThumbLX = gp.sThumbLX;
+    newState.sThumbLY = gp.sThumbLY;
+    newState.sThumbRX = gp.sThumbRX;
+    newState.sThumbRY = gp.sThumbRY;
+
+    // 扳机
+    newState.bLeftTrigger  = gp.bLeftTrigger;
+    newState.bRightTrigger = gp.bRightTrigger;
+
+    // modeIndex: 用DPad方向映射模式 (上=0, 右=1, 下=2, 左=3)
+    newState.modeIndex = state.modeIndex; // 保持上次模式
+    if (newState.dpadUp)         newState.modeIndex = 0;
+    else if (newState.dpadRight) newState.modeIndex = 1;
+    else if (newState.dpadDown)  newState.modeIndex = 2;
+    else if (newState.dpadLeft)  newState.modeIndex = 3;
+
+    // 只在状态变化时才发送信号，避免刷爆UI
+    if (std::memcmp(&newState, &state, sizeof(ControllerState)) != 0) {
+        state = newState;
+        emit getHandleKey(state);
+    }
+#endif
 }
-
-void HandleKey::decode(const QByteArray& array) {
-
-
-    // 检查数据长度是否足够（7 字节 = 56 位）
-    if (array.size() < 7) {
-        return; // 数据不足，退出
-    }
-
-    for (int i = 0; i < 4; ++i) {
-        int bit_start = i * 8;
-        bool isNegative = (array[(bit_start + 3) / 8] >> (7 - ((bit_start + 3) % 8))) & 1;
-        int magnitude = ((array[(bit_start + 4) / 8] >> (7 - ((bit_start + 4) % 8))) & 1) << 3 |
-                        ((array[(bit_start + 5) / 8] >> (7 - ((bit_start + 5) % 8))) & 1) << 2 |
-                        ((array[(bit_start + 6) / 8] >> (7 - ((bit_start + 6) % 8))) & 1) << 1 |
-                        ((array[(bit_start + 7) / 8] >> (7 - ((bit_start + 7) % 8))) & 1);
-        int value = (isNegative ? -magnitude : magnitude) * 32767 / 15;
-        int16_t* axes[] = { &state.sThumbLX, &state.sThumbLY, &state.sThumbRX, &state.sThumbRY };
-        *axes[i] = static_cast<int16_t>(value);
-    }
-
-    for (int i = 0; i < 2; ++i) {
-        int bit_start = 32 + i * 4;
-        int level = ((array[bit_start / 8] >> (7 - (bit_start % 8))) & 1) << 3 |
-                    ((array[(bit_start + 1) / 8] >> (7 - ((bit_start + 1) % 8))) & 1) << 2 |
-                    ((array[(bit_start + 2) / 8] >> (7 - ((bit_start + 2) % 8))) & 1) << 1 |
-                    ((array[(bit_start + 3) / 8] >> (7 - ((bit_start + 3) % 8))) & 1);
-        uint8_t value = level * 255 / 15;
-        (i == 0 ? state.bLeftTrigger : state.bRightTrigger) = value;
-    }
-
-    bool* buttons[] = { &state.dpadUp, &state.dpadDown, &state.dpadLeft, &state.dpadRight,
-                       &state.buttonY, &state.buttonA, &state.buttonX, &state.buttonB,
-                       &state.leftThumb, &state.rightThumb, &state.leftShoulder,
-                       &state.rightShoulder, &state.buttonBack, &state.buttonStart };
-    for (int i = 0; i < 14; ++i) {
-        buttons[i][0] = (array[(40 + i) / 8] >> (7 - ((40 + i) % 8))) & 1;
-    }
-
-    state.modeIndex = ((array[54 / 8] >> (7 - (54 % 8))) & 1) << 1 | ((array[55 / 8] >> (7 - (55 % 8))) & 1);
-}
-

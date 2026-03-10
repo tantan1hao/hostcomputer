@@ -72,6 +72,7 @@ public:
 
     void updateAxis(const QString &axisName, float value);
     void updateButton(const QString &buttonName, bool pressed);
+    void updateAll(float lx, float ly, float rx, float ry, float lt, float rt);
 
 private:
     QLabel *m_titleLabel;

@@ -257,3 +257,13 @@ void GamepadDisplayWidget::updateButton(const QString &buttonName, bool pressed)
         pressed ? "color: #4CAF50; font-weight: bold; border: none; background: transparent;"
                 : "color: #666; border: none; background: transparent;");
 }
+
+void GamepadDisplayWidget::updateAll(float lx, float ly, float rx, float ry, float lt, float rt)
+{
+    m_lx = lx; m_ly = ly;
+    m_rx = rx; m_ry = ry;
+    m_leftStick->setPosition(m_lx, m_ly);
+    m_rightStick->setPosition(m_rx, m_ry);
+    m_ltBar->setValue(lt);
+    m_rtBar->setValue(rt);
+}
