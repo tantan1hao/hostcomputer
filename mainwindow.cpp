@@ -1107,7 +1107,8 @@ void MainWindow::handleGamepadVehicleMode(const ControllerState &state)
 void MainWindow::handleGamepadArmMode(const ControllerState &state)
 {
     const int16_t DEADZONE = 3000;
-    const float JOINT_SPEED = 0.1f;
+    const float POSITION_SPEED = 0.01f;  // 位置增量 m
+    const float ROTATION_SPEED = 0.05f;  // 姿态增量 rad
 
     // A按钮 → 急停
     if (state.buttonA) {
@@ -1120,53 +1121,73 @@ void MainWindow::handleGamepadArmMode(const ControllerState &state)
 
     if (!m_tcpClient || !m_tcpClient->isConnected()) return;
 
-    // 左摇杆X → 关节0（底座旋转）
+    // 末端笛卡尔空间控制
+    float deltaX = 0.0f;  // 前后
+    float deltaY = 0.0f;  // 左右
+    float deltaZ = 0.0f;  // 上下
+    float deltaRoll = 0.0f;
+    float deltaPitch = 0.0f;
+    float deltaYaw = 0.0f;
+
+    // 左摇杆X → 末端左右移动 (Y轴)
     if (qAbs(state.sThumbLX) > DEADZONE) {
-        float val = (state.sThumbLX / 32767.0f) * JOINT_SPEED;
-        m_tcpClient->sendJointControl(0, val, JOINT_SPEED);
+        deltaY = (state.sThumbLX / 32767.0f) * POSITION_SPEED;
     }
 
-    // 左摇杆Y → 关节1（大臂俯仰）
+    // 左摇杆Y → 末端前后移动 (X轴)
     if (qAbs(state.sThumbLY) > DEADZONE) {
-        float val = (state.sThumbLY / 32767.0f) * JOINT_SPEED;
-        m_tcpClient->sendJointControl(1, val, JOINT_SPEED);
+        deltaX = (state.sThumbLY / 32767.0f) * POSITION_SPEED;
     }
 
-    // 右摇杆X → 关节2（小臂俯仰）
-    if (qAbs(state.sThumbRX) > DEADZONE) {
-        float val = (state.sThumbRX / 32767.0f) * JOINT_SPEED;
-        m_tcpClient->sendJointControl(2, val, JOINT_SPEED);
-    }
-
-    // 右摇杆Y → 关节3（手腕旋转）
+    // 右摇杆Y → 末端上下移动 (Z轴)
     if (qAbs(state.sThumbRY) > DEADZONE) {
-        float val = (state.sThumbRY / 32767.0f) * JOINT_SPEED;
-        m_tcpClient->sendJointControl(3, val, JOINT_SPEED);
+        deltaZ = (state.sThumbRY / 32767.0f) * POSITION_SPEED;
     }
 
-    // LT → 关节4（手腕俯仰）
+    // 右摇杆X → 末端偏航 (Yaw)
+    if (qAbs(state.sThumbRX) > DEADZONE) {
+        deltaYaw = (state.sThumbRX / 32767.0f) * ROTATION_SPEED;
+    }
+
+    // LT → 末端俯仰- (Pitch-)
     if (state.bLeftTrigger > 30) {
-        float val = (state.bLeftTrigger / 255.0f) * JOINT_SPEED;
-        m_tcpClient->sendJointControl(4, val, JOINT_SPEED);
+        deltaPitch = -(state.bLeftTrigger / 255.0f) * ROTATION_SPEED;
     }
 
-    // RT → 关节5（末端旋转）
+    // RT → 末端俯仰+ (Pitch+)
     if (state.bRightTrigger > 30) {
-        float val = (state.bRightTrigger / 255.0f) * JOINT_SPEED;
-        m_tcpClient->sendJointControl(5, val, JOINT_SPEED);
+        deltaPitch = (state.bRightTrigger / 255.0f) * ROTATION_SPEED;
     }
 
-    // LB → 执行器闭合
+    // LB → 末端滚转- (Roll-)
     if (state.leftShoulder) {
-        QJsonObject params;
-        params["value"] = -1.0;
-        m_tcpClient->sendSystemCommand("executor_control", params);
+        deltaRoll = -ROTATION_SPEED;
     }
 
-    // RB → 执行器张开
+    // RB → 末端滚转+ (Roll+)
     if (state.rightShoulder) {
-        QJsonObject params;
-        params["value"] = 1.0;
-        m_tcpClient->sendSystemCommand("executor_control", params);
+        deltaRoll = ROTATION_SPEED;
+    }
+
+    // 发送末端控制命令
+    bool hasMovement = (qAbs(deltaX) > 0.001f || qAbs(deltaY) > 0.001f || qAbs(deltaZ) > 0.001f ||
+                        qAbs(deltaRoll) > 0.001f || qAbs(deltaPitch) > 0.001f || qAbs(deltaYaw) > 0.001f);
+
+    if (hasMovement) {
+        m_tcpClient->sendEndEffectorControl(deltaX, deltaY, deltaZ, deltaRoll, deltaPitch, deltaYaw);
+
+        // 日志（防止刷屏）
+        static float lastX = 0.0f, lastY = 0.0f, lastZ = 0.0f;
+        static float lastRoll = 0.0f, lastPitch = 0.0f, lastYaw = 0.0f;
+        bool changed = (qAbs(deltaX - lastX) > 0.001f || qAbs(deltaY - lastY) > 0.001f ||
+                        qAbs(deltaZ - lastZ) > 0.001f || qAbs(deltaRoll - lastRoll) > 0.001f ||
+                        qAbs(deltaPitch - lastPitch) > 0.001f || qAbs(deltaYaw - lastYaw) > 0.001f);
+        if (changed) {
+            lastX = deltaX; lastY = deltaY; lastZ = deltaZ;
+            lastRoll = deltaRoll; lastPitch = deltaPitch; lastYaw = deltaYaw;
+            addCommand(QString("[手柄-末端] XYZ:(%.3f,%.3f,%.3f) RPY:(%.3f,%.3f,%.3f)")
+                       .arg(deltaX).arg(deltaY).arg(deltaZ)
+                       .arg(deltaRoll).arg(deltaPitch).arg(deltaYaw));
+        }
     }
 }

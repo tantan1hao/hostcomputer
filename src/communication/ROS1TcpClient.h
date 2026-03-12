@@ -36,6 +36,7 @@ public:
     bool sendVelocityCommand(float linearX, float linearY, float angularZ);
     bool sendEmergencyStop();
     bool sendSystemCommand(const QString &command, const QJsonObject &params = QJsonObject());
+    bool sendEndEffectorControl(float x, float y, float z, float roll, float pitch, float yaw);
 
     // 状态查询
     QString getConnectionStatus() const;

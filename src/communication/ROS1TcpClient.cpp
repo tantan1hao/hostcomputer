@@ -202,6 +202,26 @@ bool ROS1TcpClient::sendSystemCommand(const QString &command, const QJsonObject 
     return sendMessage(msg);
 }
 
+bool ROS1TcpClient::sendEndEffectorControl(float x, float y, float z, float roll, float pitch, float yaw)
+{
+    if (!isConnected()) {
+        qWarning() << "ROS1TcpClient: 未连接到ROS，无法发送末端控制命令";
+        return false;
+    }
+
+    QJsonObject command;
+    command["type"] = "cartesian_control";
+    command["x"] = x;
+    command["y"] = y;
+    command["z"] = z;
+    command["roll"] = roll;
+    command["pitch"] = pitch;
+    command["yaw"] = yaw;
+    command["timestamp"] = QDateTime::currentMSecsSinceEpoch();
+
+    return sendMessage(command);
+}
+
 QString ROS1TcpClient::getConnectionStatus() const
 {
     if (isConnected()) {
