@@ -65,7 +65,7 @@ void ROS1TcpClient::setupConnection()
 
 bool ROS1TcpClient::connectToROS(const QString &hostAddress, quint16 port)
 {
-    if (m_isConnected) {
+    if (m_isConnected || m_socket->state() == QAbstractSocket::ConnectingState) {
         qDebug() << "ROS1TcpClient: 已经连接到ROS，无需重复连接";
         return true;
     }
@@ -78,32 +78,16 @@ bool ROS1TcpClient::connectToROS(const QString &hostAddress, quint16 port)
 
     m_socket->connectToHost(hostAddress, port);
 
-    // 等待连接完成（最多5秒）
-    bool connected = m_socket->waitForConnected(5000);
-    if (connected) {
-        m_stats.connectionCount++;
-        qDebug() << QString("ROS1TcpClient: 连接成功 %1:%2").arg(hostAddress).arg(port);
-    } else {
-        qWarning() << QString("ROS1TcpClient: 连接失败 %1:%2 | socketError=%3 | %4 | state=%5")
-                       .arg(hostAddress)
-                       .arg(port)
-                       .arg(m_socket->error())
-                       .arg(m_socket->errorString())
-                       .arg(m_socket->state());
-    }
-    return connected;
+    // 改为异步连接：通过 handleConnected/handleError 回调更新状态
+    return true;
 }
 
 void ROS1TcpClient::disconnectFromROS()
 {
-    if (m_isConnected) {
+    if (m_socket->state() != QAbstractSocket::UnconnectedState) {
         m_heartbeatTimer->stop();
         m_reconnectTimer->stop();
         m_socket->disconnectFromHost();
-
-        if (m_socket->state() != QAbstractSocket::UnconnectedState) {
-            m_socket->waitForDisconnected(3000);
-        }
     }
 }
 
@@ -309,6 +293,8 @@ void ROS1TcpClient::handleConnected()
     m_reconnectAttempts = 0;
     m_reconnectTimer->stop();
     m_heartbeatTimer->start();
+
+    m_stats.connectionCount++;
 
     if (m_stats.connectionCount > 1) {
         m_stats.reconnectCount++;
