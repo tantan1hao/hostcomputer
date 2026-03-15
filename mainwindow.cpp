@@ -27,6 +27,14 @@
 #include <QKeySequence>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSettings>
+#include <QNetworkInterface>
+#include <QFrame>
+#include <QThread>
+#ifdef Q_OS_WIN
+#include <windows.h>
+#include <shellapi.h>
+#endif
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -54,71 +62,18 @@ MainWindow::MainWindow(QWidget *parent)
     setupParser();
     setupTcpClient();
     setupDisplayLayout();
+    setupKeyboardController();
+    setupHandleKey();
+    setupTimers();
 
-    // 初始化键盘控制器
-    m_keyboardController = new KeyboardController(this);
-    connect(m_keyboardController, &KeyboardController::velocityChanged,
-            this, [this](float lx, float ly, float az) {
-        // 只在方向变化时打一次日志
-        static float lastLx = 0.0f, lastAz = 0.0f;
-        bool changed = (lx != lastLx || az != lastAz);
-        if (changed) {
-            lastLx = lx;
-            lastAz = az;
-            bool isStopped = (lx == 0.0f && az == 0.0f);
-            if (!isStopped) {
-                QString dir;
-                if (lx > 0) dir += "前进 ";
-                if (lx < 0) dir += "后退 ";
-                if (az > 0) dir += "左转 ";
-                if (az < 0) dir += "右转 ";
-                addCommand(QString("[键盘] %1 (lx=%.2f az=%.2f)").arg(dir.trimmed()).arg(lx).arg(az));
-            } else {
-                addCommand("[键盘] 停止");
-            }
-        }
-
-        if (m_tcpClient && m_tcpClient->isConnected()) {
-            m_tcpClient->sendVelocityCommand(lx, ly, az);
+    // 全局Space急停快捷键（不受焦点影响，只需创建一次）
+    QShortcut *spaceStop = new QShortcut(QKeySequence(Qt::Key_Space), this);
+    spaceStop->setContext(Qt::ApplicationShortcut);
+    connect(spaceStop, &QShortcut::activated, this, [this]() {
+        if (m_keyboardController && m_keyboardController->isEnabled()) {
+            on_btn_emergency_stop_clicked();
         }
     });
-    connect(m_keyboardController, &KeyboardController::emergencyStopRequested,
-            this, [this]() {
-        if (m_tcpClient && m_tcpClient->isConnected()) {
-            m_tcpClient->sendEmergencyStop();
-            addCommand("[键盘] 急停!");
-        }
-    });
-    // 键盘机械臂模式信号
-    connect(m_keyboardController, &KeyboardController::jointControlRequested,
-            this, [this](int jointId, float position, float velocity) {
-        if (m_tcpClient && m_tcpClient->isConnected()) {
-            m_tcpClient->sendJointControl(jointId, position, velocity);
-            addCommand(QString("[键盘-机械臂] 关节%1 位置:%2 速度:%3")
-                       .arg(jointId).arg(position, 0, 'f', 3).arg(velocity, 0, 'f', 3));
-        }
-    });
-    connect(m_keyboardController, &KeyboardController::executorControlRequested,
-            this, [this](float value) {
-        if (m_tcpClient && m_tcpClient->isConnected()) {
-            QJsonObject params;
-            params["value"] = value;
-            m_tcpClient->sendSystemCommand("executor_control", params);
-            addCommand(QString("[键盘-机械臂] 执行器: %1").arg(value > 0 ? "张开" : "闭合"));
-        }
-    });
-    // 默认启用键盘控制
-    m_keyboardController->setEnabled(true);
-
-    // 初始化手柄输入驱动 (XInput本地轮询)
-    m_handleKey = new HandleKey(this);
-    connect(m_handleKey, &HandleKey::getHandleKey,
-            this, &MainWindow::onGamepadStateReceived);
-
-    // 初始化定时器
-    m_statusTimer = new QTimer(this);
-    connect(m_statusTimer, &QTimer::timeout, this, &MainWindow::updateSystemStatus);
-    m_statusTimer->start(1000); // 每秒更新一次状态
 
     // 设置连接和状态栏
     setupConnections();
@@ -128,6 +83,7 @@ MainWindow::MainWindow(QWidget *parent)
     // 初始化UI状态
     updateConnectionDisplay();
     updateHeartbeatDisplay();
+    updateGamepadDisplay();
 
     // 添加系统启动提示
     addCommand("[系统] 主窗口初始化完成");
@@ -172,14 +128,42 @@ void MainWindow::setupDisplayLayout()
     // 创建布局管理器（2行3列）
     m_displayLayout = new DisplayLayoutManager(2, 3, this);
 
-    // 创建CO2显示控件并放到布局格子中（索引5 = 第2行第3列）
-    m_co2Widget = new CO2DisplayWidget();
-    m_displayLayout->setWidget(5, m_co2Widget);
+    // 创建5个RTSP视频播放控件，放入索引0-4
+    for (int i = 0; i < 5; ++i) {
+        m_rtspWidgets[i] = new RtspPlayerWidget(i);
+        m_displayLayout->setWidget(i, m_rtspWidgets[i]);
+    }
 
-    // 创建手柄显示控件，放到右侧面板（小车姿态模型下方）
+    // 索引5：垂直堆叠容器，CO2置顶，剩余空间留给后续控件
+    QWidget *statusPanel = new QWidget();
+    QVBoxLayout *statusLayout = new QVBoxLayout(statusPanel);
+    statusLayout->setContentsMargins(0, 0, 0, 0);
+    statusLayout->setSpacing(3);
+
+    m_co2Widget = new CO2DisplayWidget();
+    m_co2Widget->setMaximumHeight(120);
+    statusLayout->addWidget(m_co2Widget);
+
+    statusLayout->addStretch();
+
+    m_displayLayout->setWidget(5, statusPanel);
+
+    // 创建手柄显示控件，放到姿态模型右侧
     m_gamepadWidget = new GamepadDisplayWidget();
-    m_gamepadWidget->setMaximumHeight(180);
-    ui->verticalLayout_right->insertWidget(1, m_gamepadWidget);
+    m_gamepadWidget->setMaximumWidth(200);
+
+    // 手柄 + 下方预留空容器，垂直堆叠
+    QWidget *gamepadColumn = new QWidget();
+    QVBoxLayout *gamepadColumnLayout = new QVBoxLayout(gamepadColumn);
+    gamepadColumnLayout->setContentsMargins(0, 0, 0, 0);
+    gamepadColumnLayout->setSpacing(3);
+    gamepadColumnLayout->addWidget(m_gamepadWidget);
+
+    QWidget *reservedPanel = new QWidget();
+    gamepadColumnLayout->addWidget(reservedPanel);
+
+    gamepadColumn->setMaximumWidth(200);
+    ui->horizontalLayout_model_gamepad->addWidget(gamepadColumn);
 
     // 把 DisplayLayoutManager 塞进 group_cameras 的布局中
     ui->group_cameras->layout()->addWidget(m_displayLayout);
@@ -196,12 +180,14 @@ void MainWindow::setupTcpClient()
 
     // 连接TCP状态信号
     connect(m_tcpClient, &Communication::ROS1TcpClient::connectedToROS, this, [this]() {
+        updateConnectionStatus(true);
         addCommand("[TCP] 已连接到ROS节点");
         statusBar()->showMessage(QString("TCP已连接: %1:%2")
             .arg(m_tcpClient->getROSHost()).arg(m_tcpClient->getROSPort()));
     });
 
     connect(m_tcpClient, &Communication::ROS1TcpClient::disconnectedFromROS, this, [this]() {
+        updateConnectionStatus(false);
         addCommand("[TCP] 与ROS节点断开连接");
         statusBar()->showMessage("TCP连接断开");
     });
@@ -226,6 +212,112 @@ void MainWindow::setupTcpClient()
     // IMU数据接收
     connect(m_tcpClient, &Communication::ROS1TcpClient::imuDataReceived,
             this, &MainWindow::onIMUDataReceived);
+
+    // 摄像头信息接收 → RTSP播放控件
+    connect(m_tcpClient, &Communication::ROS1TcpClient::cameraInfoReceived,
+            this, [this](int cameraId, const QString &rtspUrl, bool online,
+                         const QString &codec, int width, int height, int fps, int bitrateKbps) {
+        if (cameraId >= 0 && cameraId < 5 && m_rtspWidgets[cameraId]) {
+            m_rtspWidgets[cameraId]->setCameraInfo(rtspUrl, online, codec, width, height, fps, bitrateKbps);
+            addCommand(QString("[TCP] 摄像头%1 %2 %3")
+                       .arg(cameraId).arg(online ? "上线" : "离线").arg(rtspUrl));
+        }
+    });
+}
+
+void MainWindow::setupKeyboardController()
+{
+    m_keyboardController = new KeyboardController(this);
+    connect(m_keyboardController, &KeyboardController::velocityChanged,
+            this, [this](float lx, float ly, float az) {
+        // 时间节流：500ms内最多打一次日志
+        static float lastLx = 0.0f, lastAz = 0.0f;
+        static qint64 lastLogTime = 0;
+        bool changed = (lx != lastLx || az != lastAz);
+        if (changed) {
+            lastLx = lx;
+            lastAz = az;
+            qint64 now = QDateTime::currentMSecsSinceEpoch();
+            if (now - lastLogTime >= 500) {
+                lastLogTime = now;
+                bool isStopped = (lx == 0.0f && az == 0.0f);
+                if (!isStopped) {
+                    QString dir;
+                    if (lx > 0) dir += "前进 ";
+                    if (lx < 0) dir += "后退 ";
+                    if (az > 0) dir += "左转 ";
+                    if (az < 0) dir += "右转 ";
+                    addCommand(QString("[键盘] %1 (lx=%.2f az=%.2f)").arg(dir.trimmed()).arg(lx).arg(az));
+                } else {
+                    addCommand("[键盘] 停止");
+                }
+            }
+        }
+
+        if (m_tcpClient && m_tcpClient->isConnected()) {
+            m_tcpClient->sendVelocityCommand(lx, ly, az);
+        }
+    });
+    connect(m_keyboardController, &KeyboardController::emergencyStopRequested,
+            this, &MainWindow::on_btn_emergency_stop_clicked);
+
+    // 键盘机械臂模式信号
+    connect(m_keyboardController, &KeyboardController::jointControlRequested,
+            this, [this](int jointId, float position, float velocity) {
+        if (m_tcpClient && m_tcpClient->isConnected()) {
+            m_tcpClient->sendJointControl(jointId, position, velocity);
+            addCommand(QString("[键盘-机械臂] 关节%1 位置:%2 速度:%3")
+                       .arg(jointId).arg(position, 0, 'f', 3).arg(velocity, 0, 'f', 3));
+        }
+    });
+    connect(m_keyboardController, &KeyboardController::executorControlRequested,
+            this, [this](float value) {
+        if (m_tcpClient && m_tcpClient->isConnected()) {
+            QJsonObject params;
+            params["value"] = value;
+            m_tcpClient->sendSystemCommand("executor_control", params);
+            addCommand(QString("[键盘-机械臂] 执行器: %1").arg(value > 0 ? "张开" : "闭合"));
+        }
+    });
+
+    // 默认启用键盘控制
+    m_keyboardController->setEnabled(true);
+
+    // 同步当前控制模式
+    m_keyboardController->setControlMode(static_cast<int>(m_controlMode));
+}
+
+void MainWindow::setupHandleKey()
+{
+    m_handleKey = new HandleKey(this);
+    connect(m_handleKey, &HandleKey::getHandleKey,
+            this, &MainWindow::onGamepadStateReceived);
+    connect(m_handleKey, &HandleKey::connectionChanged,
+            this, [this](bool connected) {
+        updateGamepadDisplay();
+        if (connected) {
+            addCommand("[手柄] 手柄已连接");
+            // 手柄连接后禁用键盘控制（急停除外）
+            if (m_keyboardController) {
+                m_keyboardController->setEnabled(false);
+                addCommand("[键盘] 键盘控制已禁用（急停仍可用）");
+            }
+        } else {
+            addCommand("[手柄] 手柄已断开");
+            // 手柄断开后恢复键盘控制
+            if (m_keyboardController) {
+                m_keyboardController->setEnabled(true);
+                addCommand("[键盘] 键盘控制已恢复");
+            }
+        }
+    });
+}
+
+void MainWindow::setupTimers()
+{
+    m_statusTimer = new QTimer(this);
+    connect(m_statusTimer, &QTimer::timeout, this, &MainWindow::updateSystemStatus);
+    m_statusTimer->start(1000); // 每秒更新一次状态
 }
 
 void MainWindow::setupConnections()
@@ -278,20 +370,25 @@ void MainWindow::updateBandwidthAndPacketLoss()
 
     auto stats = m_tcpClient->getStats();
 
-    // 计算带宽压力（本周期收发字节数，单位KB/s，定时器间隔1秒）
+    // 计算带宽压力（本周期收发字节数，定时器间隔见调用频率）
     quint64 deltaBytes = (stats.bytesSent - m_lastBytesSent) + (stats.bytesReceived - m_lastBytesReceived);
-    double bandwidthKBs = deltaBytes / 1024.0;
     m_lastBytesSent = stats.bytesSent;
     m_lastBytesReceived = stats.bytesReceived;
 
-    // 带宽压力等级
+    // 自动选择单位 KB/s 或 MB/s
     QString pressure;
-    if (bandwidthKBs < 10.0)
-        pressure = QString("%1 KB/s (低)").arg(bandwidthKBs, 0, 'f', 1);
-    else if (bandwidthKBs < 100.0)
-        pressure = QString("%1 KB/s (中)").arg(bandwidthKBs, 0, 'f', 1);
-    else
-        pressure = QString("%1 KB/s (高)").arg(bandwidthKBs, 0, 'f', 1);
+    double bandwidthKBs = deltaBytes / 1024.0;
+    if (bandwidthKBs < 1024.0) {
+        if (bandwidthKBs < 10.0)
+            pressure = QString("%1 KB/s (低)").arg(bandwidthKBs, 0, 'f', 1);
+        else if (bandwidthKBs < 100.0)
+            pressure = QString("%1 KB/s (中)").arg(bandwidthKBs, 0, 'f', 1);
+        else
+            pressure = QString("%1 KB/s (高)").arg(bandwidthKBs, 0, 'f', 1);
+    } else {
+        double bandwidthMBs = bandwidthKBs / 1024.0;
+        pressure = QString("%1 MB/s (高)").arg(bandwidthMBs, 0, 'f', 2);
+    }
 
     ui->label_cpu->setText("带宽压力:");
     ui->label_cpu_value->setText(pressure);
@@ -462,21 +559,30 @@ void MainWindow::on_action_fullscreen_triggered()
 
 void MainWindow::on_action_reset_layout_triggered()
 {
-    // 确认重置
-    auto reply = QMessageBox::question(this, "确认重置",
-        "确定要重置界面吗？\n\n这将清除所有视频显示并重新初始化组件，可能解决卡顿问题。",
-        QMessageBox::Yes | QMessageBox::No,
-        QMessageBox::No);
-
-    if (reply == QMessageBox::Yes) {
-        reinitialize();
-    }
+    reinitialize();
 }
 
 void MainWindow::cleanupResources()
 {
+    // 1. 停止定时器
+    if (m_statusTimer) {
+        m_statusTimer->stop();
+        m_statusTimer->disconnect();
+    }
 
-    // 1. 停止并断开串口
+    // 2. 停止手柄轮询
+    if (m_handleKey) {
+        m_handleKey->stopPolling();
+        m_handleKey->disconnect();
+    }
+
+    // 3. 禁用并断开键盘控制器
+    if (m_keyboardController) {
+        m_keyboardController->setEnabled(false);
+        m_keyboardController->disconnect();
+    }
+
+    // 4. 停止并断开串口
     if (m_serialManager) {
         if (m_serialManager->isOpen()) {
             m_serialManager->closePort();
@@ -484,13 +590,13 @@ void MainWindow::cleanupResources()
         m_serialManager->disconnect();
     }
 
-    // 1.5 断开TCP
+    // 5. 断开TCP
     if (m_tcpClient) {
         m_tcpClient->disconnectFromROS();
         m_tcpClient->disconnect();
     }
 
-    // 2. 清空命令和错误显示
+    // 6. 清空命令和错误显示
     if (ui->text_commands) {
         ui->text_commands->clear();
     }
@@ -498,33 +604,36 @@ void MainWindow::cleanupResources()
         ui->text_errors->clear();
     }
 
-    // 3. 处理待处理的事件，确保UI刷新
+    // 7. 处理待处理的事件，确保UI刷新
     QApplication::processEvents();
-
 }
 
 void MainWindow::reinitialize()
 {
-
-    // 1. 清理现有资源
+    // 1. 清理现有资源（停止所有活动）
     cleanupResources();
 
-    // 2. 删除旧组件
-    if (m_serialManager) {
-        delete m_serialManager;
-        m_serialManager = nullptr;
-    }
+    // 2. 删除所有组件
+    delete m_statusTimer;
+    m_statusTimer = nullptr;
 
-    if (m_tcpClient) {
-        delete m_tcpClient;
-        m_tcpClient = nullptr;
-    }
+    delete m_handleKey;
+    m_handleKey = nullptr;
 
-    // 3. 删除旧的布局管理器
+    delete m_keyboardController;
+    m_keyboardController = nullptr;
+
+    delete m_serialManager;
+    m_serialManager = nullptr;
+
+    delete m_tcpClient;
+    m_tcpClient = nullptr;
+
     if (m_displayLayout) {
         delete m_displayLayout;
         m_displayLayout = nullptr;
         m_co2Widget = nullptr;  // CO2控件随布局一起销毁
+        for (auto &w : m_rtspWidgets) w = nullptr;  // RTSP控件随布局一起销毁
     }
 
     if (m_gamepadWidget) {
@@ -532,7 +641,7 @@ void MainWindow::reinitialize()
         m_gamepadWidget = nullptr;
     }
 
-    // 4. 重置状态变量
+    // 3. 重置所有状态变量
     m_isConnected = false;
     m_heartbeatOnline = false;
     m_currentFPS = 0;
@@ -542,21 +651,33 @@ void MainWindow::reinitialize()
     m_lastMessagesReceived = 0;
     m_motorMode = "待机";
     m_errorCount = 0;
+    m_controlMode = ControlMode::Vehicle;
+    m_roll = 0.0;
+    m_pitch = 0.0;
+    m_yaw = 0.0;
 
-    // 5. 处理待处理的事件
+    // 4. 处理待处理的事件
     QApplication::processEvents();
 
-    // 6. 重新初始化组件
+    // 5. 重新初始化所有组件（与构造函数顺序一致）
     setupSerialPort();
     setupParser();
     setupTcpClient();
     setupDisplayLayout();
+    setupKeyboardController();
+    setupHandleKey();
+    setupTimers();
 
-    // 7. 重新更新UI状态
+    // 6. 重新更新UI状态
     updateConnectionDisplay();
     updateHeartbeatDisplay();
+    updateGamepadDisplay();
+    ui->label_fps_value->setText("0 FPS");
+    ui->label_cpu_value->setText("0%");
+    ui->label_mode_value->setText("车体运动");
+    ui->label_error_count->setText("错误: 0");
 
-    // 8. 添加提示信息
+    // 7. 添加提示信息
     addCommand("[系统] 界面重置完成");
     addCommand("[系统] 所有组件已重新初始化");
 }
@@ -635,6 +756,22 @@ void MainWindow::on_btn_emergency_stop_clicked()
     });
 }
 
+void MainWindow::on_btn_gamepad_connect_clicked()
+{
+    if (m_handleKey && m_handleKey->isConnected()) {
+        // 已连接 → 停止轮询（断开）
+        m_handleKey->stopPolling();
+        addCommand("[手柄] 手动断开手柄轮询");
+        updateGamepadDisplay();
+    } else {
+        // 未连接 → 启动轮询尝试连接
+        if (m_handleKey) {
+            m_handleKey->startPolling();
+            addCommand("[手柄] 正在尝试连接手柄...");
+        }
+    }
+}
+
 void MainWindow::updateSystemStatus()
 {
     // 模拟系统状态更新
@@ -648,10 +785,8 @@ void MainWindow::updateSystemStatus()
         updateFPS(simulatedFPS);
     }
 
-    // 更新带宽压力与丢包概率
-    if (counter % 5 == 0) {
-        updateBandwidthAndPacketLoss();
-    }
+    // 每秒更新带宽压力与丢包概率
+    updateBandwidthAndPacketLoss();
 }
 
 void MainWindow::updateConnectionDisplay()
@@ -674,6 +809,19 @@ void MainWindow::updateHeartbeatDisplay()
 
     ui->label_heartbeat_value->setText(statusText);
     ui->label_heartbeat_value->setStyleSheet(styleSheet);
+}
+
+void MainWindow::updateGamepadDisplay()
+{
+    bool connected = m_handleKey && m_handleKey->isConnected();
+    QString statusText = connected ? "已连接" : "未连接";
+    QString styleSheet = connected ?
+        "color: green; font-weight: bold;" :
+        "color: red; font-weight: bold;";
+
+    ui->label_gamepad_value->setText(statusText);
+    ui->label_gamepad_value->setStyleSheet(styleSheet);
+    ui->btn_gamepad_connect->setText(connected ? "断开手柄" : "连接手柄");
 }
 
 void MainWindow::formatAndAddCommand(const QString& command)
@@ -875,19 +1023,24 @@ void MainWindow::showTcpConnectionDialog()
 
     QDialog dialog(this);
     dialog.setWindowTitle("TCP连接到ROS节点");
-    dialog.resize(400, 180);
+    dialog.resize(450, 300);
 
     QVBoxLayout* layout = new QVBoxLayout(&dialog);
 
     QLabel* infoLabel = new QLabel("请输入ROS节点(Intel NUC)的IP地址和端口:");
     layout->addWidget(infoLabel);
 
+    // 从QSettings读取上次使用的IP和端口
+    QSettings settings("HostComputer", "TCPConnection");
+    QString lastHost = settings.value("tcp/host", "192.168.1.123").toString();
+    int lastPort = settings.value("tcp/port", 9090).toInt();
+
     // IP地址输入
     QHBoxLayout* ipLayout = new QHBoxLayout();
     ipLayout->addWidget(new QLabel("IP地址:"));
-    QLineEdit* ipEdit = new QLineEdit("192.168.1.100");
+    QLineEdit* ipEdit = new QLineEdit(lastHost);
     ipEdit->setMinimumWidth(200);
-    ipEdit->setPlaceholderText("例如: 192.168.1.100");
+    ipEdit->setPlaceholderText("下位机IP地址");
     ipLayout->addWidget(ipEdit);
     layout->addLayout(ipLayout);
 
@@ -896,14 +1049,215 @@ void MainWindow::showTcpConnectionDialog()
     portLayout->addWidget(new QLabel("端口:"));
     QSpinBox* portSpin = new QSpinBox();
     portSpin->setRange(1, 65535);
-    portSpin->setValue(9090);
+    portSpin->setValue(lastPort);
     portSpin->setMinimumWidth(200);
     portLayout->addWidget(portSpin);
     layout->addLayout(portLayout);
 
-    // 按钮
+    // ====== 网络配置区域 ======
+    QFrame* separator = new QFrame();
+    separator->setFrameShape(QFrame::HLine);
+    separator->setFrameShadow(QFrame::Sunken);
+    layout->addWidget(separator);
+
+    QLabel* netConfigTitle = new QLabel("网络配置");
+    netConfigTitle->setStyleSheet("font-weight: bold; color: #555;");
+    layout->addWidget(netConfigTitle);
+
+    QLabel* networkStatusLabel = new QLabel("正在检测网卡...");
+    networkStatusLabel->setWordWrap(true);
+    layout->addWidget(networkStatusLabel);
+
+    QPushButton* autoConfigBtn = new QPushButton("自动配置网络");
+    autoConfigBtn->setToolTip("将有线网卡IP配置为 192.168.1.100，子网 255.255.255.0");
+    autoConfigBtn->setEnabled(false);
+    layout->addWidget(autoConfigBtn);
+
+    // --- 检测有线网卡的 lambda ---
+    struct EthernetInfo {
+        QString adapterName;  // Windows网卡名称（用于netsh）
+        QString currentIp;
+        bool found = false;
+    };
+
+    auto detectEthernetAdapter = [](EthernetInfo &info) {
+        info.found = false;
+        info.adapterName.clear();
+        info.currentIp.clear();
+
+        // 用于排除虚拟网卡的关键词
+        const QStringList excludeKeywords = {
+            "vmware", "virtual", "bluetooth", "loopback",
+            "vethernet", "hyper-v", "vpn", "tunnel",
+            "wsl", "docker", "vbox"
+        };
+
+        const auto interfaces = QNetworkInterface::allInterfaces();
+        for (const QNetworkInterface &iface : interfaces) {
+            // 必须是以太网类型、已启用且正在运行
+            if (iface.type() != QNetworkInterface::Ethernet)
+                continue;
+            if (!(iface.flags() & QNetworkInterface::IsUp))
+                continue;
+            if (iface.flags() & QNetworkInterface::IsLoopBack)
+                continue;
+
+            // 排除虚拟网卡
+            QString nameLower = iface.humanReadableName().toLower();
+            bool isVirtual = false;
+            for (const QString &kw : excludeKeywords) {
+                if (nameLower.contains(kw)) {
+                    isVirtual = true;
+                    break;
+                }
+            }
+            if (isVirtual) continue;
+
+            // 找到有线网卡
+            info.found = true;
+            info.adapterName = iface.humanReadableName();
+
+            // 获取IPv4地址
+            const auto entries = iface.addressEntries();
+            for (const QNetworkAddressEntry &entry : entries) {
+                if (entry.ip().protocol() == QAbstractSocket::IPv4Protocol
+                    && !entry.ip().isLoopback()) {
+                    info.currentIp = entry.ip().toString();
+                    break;
+                }
+            }
+            break;  // 取第一个匹配的有线网卡
+        }
+    };
+
+    // --- 刷新网卡状态的 lambda ---
+    auto refreshNetworkStatus = [&](const EthernetInfo &info) {
+        if (!info.found) {
+            networkStatusLabel->setText("未检测到有线网卡");
+            networkStatusLabel->setStyleSheet("color: red;");
+            autoConfigBtn->setEnabled(false);
+            return;
+        }
+
+        bool isReady = info.currentIp.startsWith("192.168.1.");
+        QString statusText = QString("有线网卡: %1").arg(info.adapterName);
+        if (info.currentIp.isEmpty()) {
+            statusText += " (未分配IP)";
+        } else {
+            statusText += QString(" (%1)").arg(info.currentIp);
+        }
+
+        if (isReady) {
+            statusText += "  ✓ 已就绪";
+            networkStatusLabel->setStyleSheet("color: green;");
+            autoConfigBtn->setEnabled(false);
+            autoConfigBtn->setText("网络已就绪");
+        } else {
+            statusText += "  ✗ 需要配置";
+            networkStatusLabel->setStyleSheet("color: #CC6600;");
+            autoConfigBtn->setEnabled(true);
+            autoConfigBtn->setText("自动配置网络");
+        }
+        networkStatusLabel->setText(statusText);
+    };
+
+    // 初始检测
+    EthernetInfo ethInfo;
+    detectEthernetAdapter(ethInfo);
+    refreshNetworkStatus(ethInfo);
+
+    // 如果检测到已就绪的IP，自动填入IP输入框
+    if (ethInfo.found && ethInfo.currentIp.startsWith("192.168.1.")) {
+        // 目标NUC地址保持 192.168.1.100 不变（这是下位机的IP，不是本机IP）
+    }
+
+    // --- 自动配置按钮点击逻辑 ---
+    connect(autoConfigBtn, &QPushButton::clicked, &dialog, [&]() {
+        auto confirmReply = QMessageBox::question(&dialog, "确认网络配置",
+            QString("将对网卡 \"%1\" 执行以下配置:\n\n"
+                    "  IP地址: 192.168.1.100\n"
+                    "  子网掩码: 255.255.255.0\n\n"
+                    "此操作需要管理员权限（UAC弹窗），是否继续？")
+                .arg(ethInfo.adapterName),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+
+        if (confirmReply != QMessageBox::Yes) {
+            return;
+        }
+
+#ifdef Q_OS_WIN
+        // 构建 netsh 命令参数
+        QString netshArgs = QString("interface ip set address name=\"%1\" static 192.168.1.100 255.255.255.0")
+                                .arg(ethInfo.adapterName);
+
+        // 使用 ShellExecuteExW 提权执行
+        SHELLEXECUTEINFOW sei = {};
+        sei.cbSize = sizeof(sei);
+        sei.fMask = SEE_MASK_NOCLOSEPROCESS;
+        sei.hwnd = reinterpret_cast<HWND>(dialog.winId());
+        sei.lpVerb = L"runas";
+        sei.lpFile = L"netsh";
+        sei.lpParameters = reinterpret_cast<LPCWSTR>(netshArgs.utf16());
+        sei.nShow = SW_HIDE;
+
+        autoConfigBtn->setEnabled(false);
+        autoConfigBtn->setText("正在配置...");
+        networkStatusLabel->setText("等待UAC授权...");
+        networkStatusLabel->setStyleSheet("color: #0066CC;");
+        QApplication::processEvents();
+
+        if (ShellExecuteExW(&sei)) {
+            // 等待 netsh 进程执行完毕（最多10秒）
+            if (sei.hProcess) {
+                WaitForSingleObject(sei.hProcess, 10000);
+                CloseHandle(sei.hProcess);
+            }
+
+            // 等一下让系统应用网络设置
+            QThread::msleep(1500);
+            QApplication::processEvents();
+
+            // 重新检测网卡状态
+            detectEthernetAdapter(ethInfo);
+            refreshNetworkStatus(ethInfo);
+
+            if (ethInfo.currentIp == "192.168.1.100") {
+                QMessageBox::information(&dialog, "配置成功",
+                    QString("网卡 \"%1\" 已成功配置为:\n"
+                            "IP: 192.168.1.100\n"
+                            "子网掩码: 255.255.255.0")
+                        .arg(ethInfo.adapterName));
+                addCommand("[网络] 有线网卡已配置为 192.168.1.100");
+            } else {
+                // 可能IP变了但不是精确匹配，再刷新看看
+                QMessageBox::warning(&dialog, "配置结果",
+                    QString("netsh命令已执行，当前检测到IP: %1\n"
+                            "如果IP未生效，请稍等几秒后重新打开此对话框。")
+                        .arg(ethInfo.currentIp.isEmpty() ? "未分配" : ethInfo.currentIp));
+            }
+        } else {
+            DWORD err = GetLastError();
+            if (err == ERROR_CANCELLED) {
+                networkStatusLabel->setText(QString("有线网卡: %1 (%2)  ✗ UAC已取消")
+                    .arg(ethInfo.adapterName, ethInfo.currentIp.isEmpty() ? "未分配IP" : ethInfo.currentIp));
+                networkStatusLabel->setStyleSheet("color: #CC6600;");
+            } else {
+                networkStatusLabel->setText(QString("配置失败 (错误码: %1)").arg(err));
+                networkStatusLabel->setStyleSheet("color: red;");
+            }
+            autoConfigBtn->setEnabled(true);
+            autoConfigBtn->setText("自动配置网络");
+        }
+#else
+        QMessageBox::information(&dialog, "提示", "此功能仅支持Windows系统");
+#endif
+    });
+
+    // ====== 按钮 ======
     QDialogButtonBox* buttonBox = new QDialogButtonBox(
         QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    buttonBox->button(QDialogButtonBox::Ok)->setText("连接");
+    buttonBox->button(QDialogButtonBox::Cancel)->setText("取消");
     layout->addWidget(buttonBox);
 
     connect(buttonBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
@@ -920,8 +1274,14 @@ void MainWindow::showTcpConnectionDialog()
 
         addCommand(QString("[TCP] 正在连接到 %1:%2 ...").arg(host).arg(port));
         bool success = m_tcpClient->connectToROS(host, port);
-        if (!success) {
-            addError(QString("[TCP] 连接失败: %1:%2").arg(host).arg(port));
+        if (success) {
+            // 连接成功，记住本次IP和端口
+            settings.setValue("tcp/host", host);
+            settings.setValue("tcp/port", port);
+        } else {
+            auto *socket = m_tcpClient->getSocket();
+            QString detail = socket ? socket->errorString() : "unknown";
+            addError(QString("[TCP] 连接失败: %1:%2 | 原因: %3").arg(host).arg(port).arg(detail));
         }
     }
 }
@@ -1085,21 +1445,26 @@ void MainWindow::handleGamepadVehicleMode(const ControllerState &state)
         m_tcpClient->sendVelocityCommand(linearX, 0.0f, angularZ);
     }
 
-    // 方向变化日志（防止刷屏）
+    // 方向变化日志（500ms节流防止刷屏）
     static float lastLx = 0.0f, lastAz = 0.0f;
+    static qint64 lastLogTime = 0;
     bool changed = (qAbs(linearX - lastLx) > 0.01f || qAbs(angularZ - lastAz) > 0.01f);
     if (changed) {
         lastLx = linearX;
         lastAz = angularZ;
-        bool isStopped = (linearX == 0.0f && angularZ == 0.0f);
-        if (!isStopped) {
-            QString dir;
-            if (linearX > 0) dir += "前进 ";
-            if (linearX < 0) dir += "后退 ";
-            if (angularZ > 0) dir += "左转 ";
-            if (angularZ < 0) dir += "右转 ";
-            addCommand(QString("[手柄-车体] %1 (lx=%.2f az=%.2f)")
-                       .arg(dir.trimmed()).arg(linearX).arg(angularZ));
+        qint64 now = QDateTime::currentMSecsSinceEpoch();
+        if (now - lastLogTime >= 500) {
+            lastLogTime = now;
+            bool isStopped = (linearX == 0.0f && angularZ == 0.0f);
+            if (!isStopped) {
+                QString dir;
+                if (linearX > 0) dir += "前进 ";
+                if (linearX < 0) dir += "后退 ";
+                if (angularZ > 0) dir += "左转 ";
+                if (angularZ < 0) dir += "右转 ";
+                addCommand(QString("[手柄-车体] %1 (lx=%.2f az=%.2f)")
+                           .arg(dir.trimmed()).arg(linearX).arg(angularZ));
+            }
         }
     }
 }
@@ -1118,8 +1483,6 @@ void MainWindow::handleGamepadArmMode(const ControllerState &state)
         addCommand("[手柄-机械臂] 急停!");
         return;
     }
-
-    if (!m_tcpClient || !m_tcpClient->isConnected()) return;
 
     // 末端笛卡尔空间控制
     float deltaX = 0.0f;  // 前后
@@ -1174,20 +1537,27 @@ void MainWindow::handleGamepadArmMode(const ControllerState &state)
                         qAbs(deltaRoll) > 0.001f || qAbs(deltaPitch) > 0.001f || qAbs(deltaYaw) > 0.001f);
 
     if (hasMovement) {
-        m_tcpClient->sendEndEffectorControl(deltaX, deltaY, deltaZ, deltaRoll, deltaPitch, deltaYaw);
+        if (m_tcpClient && m_tcpClient->isConnected()) {
+            m_tcpClient->sendEndEffectorControl(deltaX, deltaY, deltaZ, deltaRoll, deltaPitch, deltaYaw);
+        }
 
-        // 日志（防止刷屏）
+        // 日志（500ms节流防止刷屏）
         static float lastX = 0.0f, lastY = 0.0f, lastZ = 0.0f;
         static float lastRoll = 0.0f, lastPitch = 0.0f, lastYaw = 0.0f;
+        static qint64 lastLogTime = 0;
         bool changed = (qAbs(deltaX - lastX) > 0.001f || qAbs(deltaY - lastY) > 0.001f ||
                         qAbs(deltaZ - lastZ) > 0.001f || qAbs(deltaRoll - lastRoll) > 0.001f ||
                         qAbs(deltaPitch - lastPitch) > 0.001f || qAbs(deltaYaw - lastYaw) > 0.001f);
         if (changed) {
             lastX = deltaX; lastY = deltaY; lastZ = deltaZ;
             lastRoll = deltaRoll; lastPitch = deltaPitch; lastYaw = deltaYaw;
-            addCommand(QString("[手柄-末端] XYZ:(%.3f,%.3f,%.3f) RPY:(%.3f,%.3f,%.3f)")
-                       .arg(deltaX).arg(deltaY).arg(deltaZ)
-                       .arg(deltaRoll).arg(deltaPitch).arg(deltaYaw));
+            qint64 now = QDateTime::currentMSecsSinceEpoch();
+            if (now - lastLogTime >= 500) {
+                lastLogTime = now;
+                addCommand(QString("[手柄-末端] XYZ:(%.3f,%.3f,%.3f) RPY:(%.3f,%.3f,%.3f)")
+                           .arg(deltaX).arg(deltaY).arg(deltaZ)
+                           .arg(deltaRoll).arg(deltaPitch).arg(deltaYaw));
+            }
         }
     }
 }

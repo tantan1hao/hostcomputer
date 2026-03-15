@@ -15,6 +15,22 @@ HandleKey::HandleKey(QObject *parent)
     timer->start(20); // 50Hz 轮询
 }
 
+void HandleKey::startPolling()
+{
+    if (!timer->isActive()) {
+        timer->start(20);
+    }
+}
+
+void HandleKey::stopPolling()
+{
+    timer->stop();
+    if (m_connected) {
+        m_connected = false;
+        emit connectionChanged(false);
+    }
+}
+
 void HandleKey::readGamepad()
 {
 #ifdef Q_OS_WIN
@@ -23,7 +39,16 @@ void HandleKey::readGamepad()
 
     DWORD result = XInputGetState(0, &xinputState);
     if (result != ERROR_SUCCESS) {
+        if (m_connected) {
+            m_connected = false;
+            emit connectionChanged(false);
+        }
         return; // 手柄未连接
+    }
+
+    if (!m_connected) {
+        m_connected = true;
+        emit connectionChanged(true);
     }
 
     const XINPUT_GAMEPAD &gp = xinputState.Gamepad;

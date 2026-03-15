@@ -10,8 +10,9 @@
 StickVisualWidget::StickVisualWidget(const QString &title, QWidget *parent)
     : QWidget(parent), m_title(title)
 {
-    setMinimumSize(60, 80);
-    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    setMinimumSize(50, 60);
+    setMaximumHeight(100);
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     setAttribute(Qt::WA_StyledBackground, false);
     setStyleSheet("background: transparent; border: none;");
 }
@@ -56,9 +57,9 @@ void StickVisualWidget::paintEvent(QPaintEvent *)
                QPointF(center.x(), center.y() + radius));
 
     // --- 摇杆小圆点 ---
-    const float dotX = center.x() + m_x * (radius - 8);
-    const float dotY = center.y() - m_y * (radius - 8);   // Y轴取反：上为正
-    const int dotR = 8;
+    const float dotX = center.x() + m_x * (radius - 5);
+    const float dotY = center.y() - m_y * (radius - 5);   // Y轴取反：上为正
+    const int dotR = 5;
 
     // 距离中心越远颜色越红
     float dist = qSqrt(m_x * m_x + m_y * m_y);
@@ -100,9 +101,9 @@ void StickVisualWidget::paintEvent(QPaintEvent *)
 TriggerBarWidget::TriggerBarWidget(const QString &title, QWidget *parent)
     : QWidget(parent), m_title(title)
 {
-    setMinimumSize(24, 80);
-    setMaximumWidth(32);
-    setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+    setMinimumSize(60, 24);
+    setMaximumHeight(32);
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     setAttribute(Qt::WA_StyledBackground, false);
     setStyleSheet("background: transparent; border: none;");
 }
@@ -118,38 +119,38 @@ void TriggerBarWidget::paintEvent(QPaintEvent *)
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
 
-    const int margin = 4;
-    const int titleH = 14;
-    const int valH = 14;
-    const int barX = margin;
-    const int barY = titleH + 2;
-    const int barW = width() - margin * 2;
-    const int barH = height() - titleH - valH - 6;
+    const int margin = 2;
+    const int titleW = 22;
+    const int valW = 30;
+    const int barX = titleW + 4;
+    const int barY = margin;
+    const int barW = width() - titleW - valW - 8;
+    const int barH = height() - margin * 2;
 
     // --- 标题 ---
     QFont titleFont;
-    titleFont.setPointSize(9);
+    titleFont.setPointSize(8);
     titleFont.setBold(true);
     p.setFont(titleFont);
     p.setPen(QColor("#555"));
-    p.drawText(QRectF(0, 0, width(), titleH), Qt::AlignCenter, m_title);
+    p.drawText(QRectF(0, 0, titleW, height()), Qt::AlignCenter, m_title);
 
     // --- 背景槽 ---
     p.setBrush(QColor("#ddd"));
     p.setPen(QPen(QColor("#bbb"), 1));
     p.drawRoundedRect(barX, barY, barW, barH, 4, 4);
 
-    // --- 填充 (从底部往上) ---
-    int fillH = static_cast<int>(barH * m_value);
-    if (fillH > 0) {
-        QLinearGradient fillGrad(barX, barY + barH - fillH, barX, barY + barH);
+    // --- 填充 (从左往右) ---
+    int fillW = static_cast<int>(barW * m_value);
+    if (fillW > 0) {
+        QLinearGradient fillGrad(barX, barY, barX + fillW, barY);
         int r = static_cast<int>(100 + 155 * m_value);
         int g = static_cast<int>(200 - 120 * m_value);
         fillGrad.setColorAt(0.0, QColor(r, g, 80));
         fillGrad.setColorAt(1.0, QColor(r, g, 60).darker(110));
         p.setBrush(fillGrad);
         p.setPen(Qt::NoPen);
-        p.drawRoundedRect(barX, barY + barH - fillH, barW, fillH, 4, 4);
+        p.drawRoundedRect(barX, barY, fillW, barH, 4, 4);
     }
 
     // --- 数值 ---
@@ -157,7 +158,7 @@ void TriggerBarWidget::paintEvent(QPaintEvent *)
     valFont.setPointSize(8);
     p.setFont(valFont);
     p.setPen(QColor("#666"));
-    p.drawText(QRectF(0, barY + barH + 2, width(), valH),
+    p.drawText(QRectF(barX + barW + 4, 0, valW, height()),
                Qt::AlignCenter, QString::number(m_value, 'f', 2));
 }
 
@@ -169,8 +170,8 @@ GamepadDisplayWidget::GamepadDisplayWidget(QWidget *parent)
     : QWidget(parent)
 {
     auto *mainLayout = new QVBoxLayout(this);
-    mainLayout->setContentsMargins(4, 4, 4, 4);
-    mainLayout->setSpacing(2);
+    mainLayout->setContentsMargins(2, 2, 2, 2);
+    mainLayout->setSpacing(1);
 
     // --- 标题 ---
     m_titleLabel = new QLabel("手柄映射", this);
@@ -180,21 +181,29 @@ GamepadDisplayWidget::GamepadDisplayWidget(QWidget *parent)
         "border: none; background: transparent;");
     mainLayout->addWidget(m_titleLabel);
 
-    // --- 摇杆 + 扳机 水平布局 ---
+    // --- 摇杆 水平布局 ---
     auto *stickLayout = new QHBoxLayout();
-    stickLayout->setSpacing(4);
+    stickLayout->setSpacing(2);
 
-    m_ltBar = new TriggerBarWidget("LT", this);
     m_leftStick = new StickVisualWidget("左摇杆", this);
     m_rightStick = new StickVisualWidget("右摇杆", this);
-    m_rtBar = new TriggerBarWidget("RT", this);
 
-    stickLayout->addWidget(m_ltBar);
     stickLayout->addWidget(m_leftStick, 1);
     stickLayout->addWidget(m_rightStick, 1);
-    stickLayout->addWidget(m_rtBar);
 
-    mainLayout->addLayout(stickLayout, 1);
+    mainLayout->addLayout(stickLayout);
+
+    // --- 扳机 水平布局 ---
+    auto *triggerLayout = new QHBoxLayout();
+    triggerLayout->setSpacing(2);
+
+    m_ltBar = new TriggerBarWidget("LT", this);
+    m_rtBar = new TriggerBarWidget("RT", this);
+
+    triggerLayout->addWidget(m_ltBar, 1);
+    triggerLayout->addWidget(m_rtBar, 1);
+
+    mainLayout->addLayout(triggerLayout);
 
     // --- 按钮状态 ---
     m_buttonStatusLabel = new QLabel("按钮: --", this);

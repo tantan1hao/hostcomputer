@@ -82,6 +82,14 @@ bool ROS1TcpClient::connectToROS(const QString &hostAddress, quint16 port)
     bool connected = m_socket->waitForConnected(5000);
     if (connected) {
         m_stats.connectionCount++;
+        qDebug() << QString("ROS1TcpClient: 连接成功 %1:%2").arg(hostAddress).arg(port);
+    } else {
+        qWarning() << QString("ROS1TcpClient: 连接失败 %1:%2 | socketError=%3 | %4 | state=%5")
+                       .arg(hostAddress)
+                       .arg(port)
+                       .arg(m_socket->error())
+                       .arg(m_socket->errorString())
+                       .arg(m_socket->state());
     }
     return connected;
 }
@@ -331,8 +339,9 @@ void ROS1TcpClient::handleDisconnected()
 
 void ROS1TcpClient::handleReadyRead()
 {
-    m_receivedData.append(m_socket->readAll());
-    m_stats.bytesReceived += m_socket->bytesAvailable();
+    QByteArray chunk = m_socket->readAll();
+    m_stats.bytesReceived += chunk.size();
+    m_receivedData.append(chunk);
     processReceivedData();
 }
 
@@ -448,6 +457,16 @@ void ROS1TcpClient::processReceivedData()
             float accelY = msg["accel_y"].toDouble();
             float accelZ = msg["accel_z"].toDouble();
             emit imuDataReceived(roll, pitch, yaw, accelX, accelY, accelZ);
+        } else if (msgType == "camera_info") {
+            int cameraId = msg["camera_id"].toInt();
+            QString rtspUrl = msg["rtsp_url"].toString();
+            bool online = msg["online"].toBool();
+            QString codec = msg["codec"].toString();
+            int width = msg["width"].toInt();
+            int height = msg["height"].toInt();
+            int fps = msg["fps"].toInt();
+            int bitrateKbps = msg["bitrate_kbps"].toInt();
+            emit cameraInfoReceived(cameraId, rtspUrl, online, codec, width, height, fps, bitrateKbps);
         }
     }
 

@@ -70,27 +70,44 @@ struct ESP32State {
 };
 
 /**
- * @brief PC发送给ESP32的控制命令 (与ESP32端Command对应)
+ * @brief PC发送给下位机的控制命令 (通过TCP JSON发送)
  *
- * PC端使用此结构体创建控制命令并发送给ESP32
- * ESP32端接收并解析这些控制指令
+ * PC端使用此结构体创建控制命令并发送给Intel NUC (ROS1)
  */
 struct Command {
-    static constexpr size_t kJointCount = 6;      // 6个关节 (对应ESP32端JOINT_NUM)
+    static constexpr size_t kSwingArmCount = 4;   // 4个摆臂
 
-    std::array<int16_t, kJointCount> target_position;  // 目标位置
-    std::array<int16_t, kJointCount> target_torque;    // 目标扭矩
-    int16_t executor_position;                          // 执行器目标位置
-    int16_t executor_torque;                            // 执行器目标扭矩
-    uint8_t command_flags;                              // 命令标志位
-    uint8_t reserved;                                   // 保留字节
+    // IMU数据
+    float imu_yaw;                                 // IMU偏航角 (度)
+    float imu_roll;                                // IMU横滚角 (度)
+    float imu_pitch;                               // IMU俯仰角 (度)
+
+    // 4个摆臂电流
+    std::array<float, kSwingArmCount> swing_arm_current;  // 摆臂电流 (A)
+
+    // 机械臂末端位置 (笛卡尔空间)
+    float arm_end_x;                               // 末端X位置 (m)
+    float arm_end_y;                               // 末端Y位置 (m)
+    float arm_end_z;                               // 末端Z位置 (m)
+    float arm_end_roll;                            // 末端横滚角 (度)
+    float arm_end_pitch;                           // 末端俯仰角 (度)
+    float arm_end_yaw;                             // 末端偏航角 (度)
+
+    uint8_t command_flags;                         // 命令标志位
+    uint8_t reserved;                              // 保留字节
 
     Command() {
         // 初始化为默认值
-        target_position.fill(0);
-        target_torque.fill(0);
-        executor_position = 0;
-        executor_torque = 0;
+        imu_yaw = 0.0f;
+        imu_roll = 0.0f;
+        imu_pitch = 0.0f;
+        swing_arm_current.fill(0.0f);
+        arm_end_x = 0.0f;
+        arm_end_y = 0.0f;
+        arm_end_z = 0.0f;
+        arm_end_roll = 0.0f;
+        arm_end_pitch = 0.0f;
+        arm_end_yaw = 0.0f;
         command_flags = 0;
         reserved = 0;
     }

@@ -40,9 +40,13 @@ class HandleKey : public QObject
 
 public:
     explicit HandleKey(QObject *parent = nullptr);
+    bool isConnected() const { return m_connected; }
+    void startPolling();
+    void stopPolling();
 
 signals:
     void getHandleKey(const ControllerState &state);
+    void connectionChanged(bool connected);
 
 private slots:
     void readGamepad();
@@ -50,6 +54,7 @@ private slots:
 private:
     QTimer *timer;
     ControllerState state = {};
+    bool m_connected = false;
 };
 
 #endif // HANDLEKEY_H

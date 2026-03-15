@@ -24,11 +24,11 @@ KeyboardController::~KeyboardController()
 
 void KeyboardController::handleKeyPress(QKeyEvent *event)
 {
-    if (!m_enabled || event->isAutoRepeat()) return;
+    if (event->isAutoRepeat()) return;
 
     int key = event->key();
 
-    // 急停（两种模式通用）
+    // 急停（无论是否启用都响应）
     if (key == Qt::Key_Space) {
         m_pressedKeys.clear();
         m_linearX = 0.0f;
@@ -37,6 +37,8 @@ void KeyboardController::handleKeyPress(QKeyEvent *event)
         emit emergencyStopRequested();
         return;
     }
+
+    if (!m_enabled) return;
 
     if (m_controlMode == 2) {
         // === 机械臂模式 ===

@@ -42,6 +42,7 @@ public:
     QString getConnectionStatus() const;
     QString getROSHost() const;
     quint16 getROSPort() const;
+    QTcpSocket* getSocket() const { return m_socket; }
 
     // 统计信息
     struct Stats {
@@ -68,6 +69,8 @@ signals:
     void rawMessageReceived(const QByteArray &message);
     void co2DataReceived(float ppm);
     void imuDataReceived(float roll, float pitch, float yaw, float accelX, float accelY, float accelZ);
+    void cameraInfoReceived(int cameraId, const QString &rtspUrl, bool online,
+                            const QString &codec, int width, int height, int fps, int bitrateKbps);
 
     // 统计信息更新信号
     void statsUpdated(const Stats &stats);

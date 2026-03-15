@@ -26,6 +26,8 @@ set(CONTROLLER_SOURCES
     handlekey.h
     RealCameraManager.cpp
     RealCameraManager.h
+    RtspPlayerWidget.cpp
+    RtspPlayerWidget.h
 )
 
 # 创建静态库

@@ -13,6 +13,7 @@
 #include "src/controller/CO2DisplayWidget.h"
 #include "src/controller/GamepadDisplayWidget.h"
 #include "src/controller/handlekey.h"
+#include "src/controller/RtspPlayerWidget.h"
 
 namespace Communication {
     class SerialPortManager;
@@ -72,6 +73,7 @@ private slots:
     void on_btn_clear_commands_clicked();
     void on_btn_clear_errors_clicked();
     void on_btn_emergency_stop_clicked();
+    void on_btn_gamepad_connect_clicked();
 
     void updateSystemStatus();  // 定时更新系统状态
 
@@ -82,10 +84,14 @@ private:
     void setupStatusBar();
     void setupDisplayLayout();
     void setupTcpClient();
+    void setupKeyboardController();
+    void setupHandleKey();
+    void setupTimers();
     void cleanupResources();
     void reinitialize();       // 重新初始化
     void updateConnectionDisplay();
     void updateHeartbeatDisplay();
+    void updateGamepadDisplay();
     void formatAndAddCommand(const QString& command);
     void formatAndAddError(const QString& error);
     QString getCurrentTimestamp() const;
@@ -128,6 +134,9 @@ private:
 
     // 手柄显示控件
     GamepadDisplayWidget* m_gamepadWidget;
+
+    // RTSP视频播放控件 (索引0-4)
+    std::array<RtspPlayerWidget*, 5> m_rtspWidgets = {};
 
     // 手柄输入驱动
     HandleKey* m_handleKey;
