@@ -5,6 +5,8 @@
 #include <QMutex>
 #include <QMutexLocker>
 
+static const QString MODULE = "ROS1TcpClient";
+
 namespace Communication {
 
 ROS1TcpClient::ROS1TcpClient(QObject *parent)
@@ -27,12 +29,13 @@ ROS1TcpClient::ROS1TcpClient(QObject *parent)
 
     setupConnection();
 
-    qDebug() << "ROS1TcpClient: 创建线程安全TCP客户端";
+    LOG_INFO(MODULE, "TCP客户端已创建");
 }
 
 ROS1TcpClient::~ROS1TcpClient()
 {
     disconnectFromROS();
+    LOG_INFO(MODULE, "TCP客户端已销毁");
 }
 
 void ROS1TcpClient::setupConnection()
@@ -54,11 +57,15 @@ void ROS1TcpClient::setupConnection()
         if (m_autoReconnect && !m_isConnected && m_reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
             m_reconnectAttempts++;
             QString msg = QString("正在尝试重连... (%1/%2)").arg(m_reconnectAttempts).arg(MAX_RECONNECT_ATTEMPTS);
+            LOG_WARNING(MODULE, msg);
             emit connectionError(msg);
             connectToROS(m_hostAddress, m_port);
         } else if (m_reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
             m_reconnectTimer->stop();
-            emit connectionError("重连失败，已达到最大重试次数");
+            QString msg = "重连失败，已达到最大重试次数";
+            LOG_ERROR(MODULE, msg);
+            HANDLE_ERROR(Utils::ErrorCode::NetworkConnectionFailed, MODULE, msg);
+            emit connectionError(msg);
         }
     });
 }
@@ -66,7 +73,7 @@ void ROS1TcpClient::setupConnection()
 bool ROS1TcpClient::connectToROS(const QString &hostAddress, quint16 port)
 {
     if (m_isConnected) {
-        qDebug() << "ROS1TcpClient: 已经连接到ROS，无需重复连接";
+        LOG_DEBUG(MODULE, "已经连接到ROS，无需重复连接");
         return true;
     }
 
@@ -74,7 +81,7 @@ bool ROS1TcpClient::connectToROS(const QString &hostAddress, quint16 port)
     m_port = port;
     m_reconnectAttempts = 0;
 
-    qDebug() << QString("ROS1TcpClient: 正在连接到ROS节点: %1:%2").arg(hostAddress).arg(port);
+    LOG_INFO(MODULE, QString("正在连接到ROS节点: %1:%2").arg(hostAddress).arg(port));
 
     m_socket->connectToHost(hostAddress, port);
 
@@ -82,14 +89,15 @@ bool ROS1TcpClient::connectToROS(const QString &hostAddress, quint16 port)
     bool connected = m_socket->waitForConnected(5000);
     if (connected) {
         m_stats.connectionCount++;
-        qDebug() << QString("ROS1TcpClient: 连接成功 %1:%2").arg(hostAddress).arg(port);
+        LOG_INFO(MODULE, QString("连接成功 %1:%2").arg(hostAddress).arg(port));
     } else {
-        qWarning() << QString("ROS1TcpClient: 连接失败 %1:%2 | socketError=%3 | %4 | state=%5")
-                       .arg(hostAddress)
-                       .arg(port)
-                       .arg(m_socket->error())
-                       .arg(m_socket->errorString())
-                       .arg(m_socket->state());
+        QString detail = QString("socketError=%1 | %2 | state=%3")
+                             .arg(m_socket->error())
+                             .arg(m_socket->errorString())
+                             .arg(m_socket->state());
+        LOG_ERROR(MODULE, QString("连接失败 %1:%2").arg(hostAddress).arg(port));
+        HANDLE_ERROR_DETAIL(Utils::ErrorCode::NetworkConnectionFailed, MODULE,
+                            QString("连接失败 %1:%2").arg(hostAddress).arg(port), detail);
     }
     return connected;
 }
@@ -104,6 +112,7 @@ void ROS1TcpClient::disconnectFromROS()
         if (m_socket->state() != QAbstractSocket::UnconnectedState) {
             m_socket->waitForDisconnected(3000);
         }
+        LOG_INFO(MODULE, "已主动断开连接");
     }
 }
 
@@ -115,7 +124,7 @@ bool ROS1TcpClient::isConnected() const
 bool ROS1TcpClient::sendMotorCommand(const ESP32State &esp32State)
 {
     if (!isConnected()) {
-        qWarning() << "ROS1TcpClient: 未连接到ROS，无法发送电机命令";
+        HANDLE_ERROR(Utils::ErrorCode::NetworkDisconnected, MODULE, "未连接到ROS，无法发送电机命令");
         return false;
     }
 
@@ -144,12 +153,13 @@ bool ROS1TcpClient::sendMotorCommand(const ESP32State &esp32State)
 bool ROS1TcpClient::sendJointControl(int jointId, float position, float velocity)
 {
     if (!isConnected()) {
-        qWarning() << "ROS1TcpClient: 未连接到ROS，无法发送关节控制命令";
+        HANDLE_ERROR(Utils::ErrorCode::NetworkDisconnected, MODULE, "未连接到ROS，无法发送关节控制命令");
         return false;
     }
 
     if (jointId < 0 || jointId >= 6) {
-        qWarning() << "ROS1TcpClient: 关节ID无效，必须在0-5范围内";
+        HANDLE_ERROR_DETAIL(Utils::ErrorCode::InvalidParameter, MODULE,
+                            "关节ID无效", QString("jointId=%1，必须在0-5范围内").arg(jointId));
         return false;
     }
 
@@ -166,7 +176,7 @@ bool ROS1TcpClient::sendJointControl(int jointId, float position, float velocity
 bool ROS1TcpClient::sendVelocityCommand(float linearX, float linearY, float angularZ)
 {
     if (!isConnected()) {
-        qWarning() << "ROS1TcpClient: 未连接到ROS，无法发送速度命令";
+        HANDLE_ERROR(Utils::ErrorCode::NetworkDisconnected, MODULE, "未连接到ROS，无法发送速度命令");
         return false;
     }
 
@@ -183,9 +193,11 @@ bool ROS1TcpClient::sendVelocityCommand(float linearX, float linearY, float angu
 bool ROS1TcpClient::sendEmergencyStop()
 {
     if (!isConnected()) {
-        qWarning() << "ROS1TcpClient: 未连接到ROS，无法发送急停命令";
+        HANDLE_ERROR(Utils::ErrorCode::NetworkDisconnected, MODULE, "未连接到ROS，无法发送急停命令");
         return false;
     }
+
+    LOG_WARNING(MODULE, "发送急停命令");
 
     QJsonObject command;
     command["type"] = "emergency_stop";
@@ -197,7 +209,7 @@ bool ROS1TcpClient::sendEmergencyStop()
 bool ROS1TcpClient::sendSystemCommand(const QString &command, const QJsonObject &params)
 {
     if (!isConnected()) {
-        qWarning() << "ROS1TcpClient: 未连接到ROS，无法发送系统命令";
+        HANDLE_ERROR(Utils::ErrorCode::NetworkDisconnected, MODULE, "未连接到ROS，无法发送系统命令");
         return false;
     }
 
@@ -207,13 +219,15 @@ bool ROS1TcpClient::sendSystemCommand(const QString &command, const QJsonObject 
     msg["params"] = params;
     msg["timestamp"] = QDateTime::currentMSecsSinceEpoch();
 
+    LOG_INFO(MODULE, QString("发送系统命令: %1").arg(command));
+
     return sendMessage(msg);
 }
 
 bool ROS1TcpClient::sendEndEffectorControl(float x, float y, float z, float roll, float pitch, float yaw)
 {
     if (!isConnected()) {
-        qWarning() << "ROS1TcpClient: 未连接到ROS，无法发送末端控制命令";
+        HANDLE_ERROR(Utils::ErrorCode::NetworkDisconnected, MODULE, "未连接到ROS，无法发送末端控制命令");
         return false;
     }
 
@@ -228,6 +242,47 @@ bool ROS1TcpClient::sendEndEffectorControl(float x, float y, float z, float roll
     command["timestamp"] = QDateTime::currentMSecsSinceEpoch();
 
     return sendMessage(command);
+}
+
+bool ROS1TcpClient::sendControlCommand(const Command &command)
+{
+    if (!isConnected()) {
+        HANDLE_ERROR(Utils::ErrorCode::NetworkDisconnected, MODULE, "未连接到ROS，无法发送控制命令");
+        return false;
+    }
+
+    QJsonObject msg;
+    msg["type"] = "control_command";
+    msg["timestamp"] = QDateTime::currentMSecsSinceEpoch();
+
+    // IMU数据
+    QJsonObject imuData;
+    imuData["yaw"] = command.imu_yaw;
+    imuData["roll"] = command.imu_roll;
+    imuData["pitch"] = command.imu_pitch;
+    msg["imu"] = imuData;
+
+    // 4个摆臂电流
+    QJsonArray swingArmCurrents;
+    for (int i = 0; i < 4; ++i) {
+        swingArmCurrents.append(command.swing_arm_current[i]);
+    }
+    msg["swing_arm_current"] = swingArmCurrents;
+
+    // 机械臂末端位置
+    QJsonObject armEndPos;
+    armEndPos["x"] = command.arm_end_x;
+    armEndPos["y"] = command.arm_end_y;
+    armEndPos["z"] = command.arm_end_z;
+    armEndPos["roll"] = command.arm_end_roll;
+    armEndPos["pitch"] = command.arm_end_pitch;
+    armEndPos["yaw"] = command.arm_end_yaw;
+    msg["arm_end_position"] = armEndPos;
+
+    // 标志位
+    msg["command_flags"] = command.command_flags;
+
+    return sendMessage(msg);
 }
 
 QString ROS1TcpClient::getConnectionStatus() const
@@ -265,6 +320,7 @@ void ROS1TcpClient::resetStats()
     m_stats.connectionCount = 0;
     m_stats.reconnectCount = 0;
     emitStatsUpdate();
+    LOG_INFO(MODULE, "统计信息已重置");
 }
 
 // ==================== 跨线程槽函数 ====================
@@ -314,7 +370,7 @@ void ROS1TcpClient::handleConnected()
         m_stats.reconnectCount++;
     }
 
-    qDebug() << "ROS1TcpClient: 成功连接到ROS节点:" << getConnectionStatus();
+    LOG_INFO(MODULE, QString("成功连接到ROS节点: %1").arg(getConnectionStatus()));
     emit connectedToROS();
     emitStatsUpdate();
 }
@@ -325,13 +381,14 @@ void ROS1TcpClient::handleDisconnected()
     m_isConnected = false;
     m_heartbeatTimer->stop();
 
-    qDebug() << "ROS1TcpClient: 与ROS节点断开连接";
-
     if (wasConnected) {
+        LOG_WARNING(MODULE, "与ROS节点断开连接");
+        HANDLE_ERROR(Utils::ErrorCode::NetworkDisconnected, MODULE, "与ROS节点断开连接");
         emit disconnectedFromROS();
 
         // 如果启用自动重连，启动重连定时器
         if (m_autoReconnect) {
+            LOG_INFO(MODULE, "启动自动重连...");
             m_reconnectTimer->start();
         }
     }
@@ -347,36 +404,43 @@ void ROS1TcpClient::handleReadyRead()
 
 void ROS1TcpClient::handleError(QAbstractSocket::SocketError error)
 {
+    Utils::ErrorCode errorCode = Utils::ErrorCode::NetworkConnectionFailed;
     QString errorMsg;
+
     switch (error) {
     case QAbstractSocket::ConnectionRefusedError:
         errorMsg = "连接被拒绝";
+        errorCode = Utils::ErrorCode::NetworkConnectionFailed;
         break;
     case QAbstractSocket::RemoteHostClosedError:
         errorMsg = "远程主机关闭连接";
+        errorCode = Utils::ErrorCode::NetworkDisconnected;
         break;
     case QAbstractSocket::HostNotFoundError:
         errorMsg = "找不到主机";
+        errorCode = Utils::ErrorCode::NetworkConnectionFailed;
         break;
     case QAbstractSocket::SocketTimeoutError:
         errorMsg = "连接超时";
+        errorCode = Utils::ErrorCode::NetworkTimeout;
         break;
     case QAbstractSocket::NetworkError:
         errorMsg = "网络错误";
+        errorCode = Utils::ErrorCode::NetworkConnectionFailed;
         break;
     default:
         errorMsg = QString("网络错误: %1").arg(m_socket->errorString());
     }
 
-    qCritical() << "ROS1TcpClient: 连接错误:" << errorMsg;
+    HANDLE_ERROR_DETAIL(errorCode, MODULE, errorMsg,
+                        QString("host=%1:%2, socketError=%3").arg(m_hostAddress).arg(m_port).arg(error));
     emit connectionError(errorMsg);
 }
 
 void ROS1TcpClient::checkConnection()
 {
     if (!isConnected()) {
-        // 如果心跳检测发现连接断开，触发重连
-        qDebug() << "ROS1TcpClient: 心跳检测发现连接断开";
+        LOG_DEBUG(MODULE, "心跳检测发现连接断开");
         handleDisconnected();
     } else {
         // 发送心跳包
@@ -398,7 +462,8 @@ bool ROS1TcpClient::sendMessage(const QJsonObject &message)
 
     qint64 bytesWritten = m_socket->write(data);
     if (bytesWritten == -1) {
-        qWarning() << "ROS1TcpClient: 发送消息失败:" << m_socket->errorString();
+        HANDLE_ERROR_DETAIL(Utils::ErrorCode::NetworkSendFailed, MODULE,
+                            "发送消息失败", m_socket->errorString());
         return false;
     }
 
@@ -424,7 +489,10 @@ void ROS1TcpClient::processReceivedData()
         QJsonDocument doc = QJsonDocument::fromJson(line, &error);
 
         if (error.error != QJsonParseError::NoError) {
-            qWarning() << "ROS1TcpClient: JSON解析错误:" << error.errorString();
+            HANDLE_ERROR_DETAIL(Utils::ErrorCode::ProtocolParseError, MODULE,
+                                "JSON解析错误", QString("%1 | 原始数据: %2")
+                                    .arg(error.errorString())
+                                    .arg(QString::fromUtf8(line.left(200))));
             continue;
         }
 
@@ -435,6 +503,11 @@ void ROS1TcpClient::processReceivedData()
 
         // 根据消息类型处理
         QString msgType = msg["type"].toString();
+        if (msgType.isEmpty()) {
+            LOG_WARNING(MODULE, "收到无类型的JSON消息");
+            continue;
+        }
+
         if (msgType == "motor_state") {
             ESP32State state = parseMotorState(msg);
             emit motorStateReceived(state);
@@ -467,6 +540,8 @@ void ROS1TcpClient::processReceivedData()
             int fps = msg["fps"].toInt();
             int bitrateKbps = msg["bitrate_kbps"].toInt();
             emit cameraInfoReceived(cameraId, rtspUrl, online, codec, width, height, fps, bitrateKbps);
+        } else if (msgType != "heartbeat") {
+            LOG_DEBUG(MODULE, QString("收到未处理的消息类型: %1").arg(msgType));
         }
     }
 

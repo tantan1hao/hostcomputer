@@ -69,6 +69,7 @@ endif()
 # 子目录（分层）
 # 每一层一个文件夹，也对应一个 CMakeLists.txt
 # ============================================
+add_subdirectory(src/utils)          # 工具层（日志、错误处理）
 add_subdirectory(src/controller)     # 业务逻辑层
 add_subdirectory(src/communication)  # 通信层（CAN/TCP/Serial）
 add_subdirectory(src/parser)         # 协议解析层
@@ -100,6 +101,7 @@ if(QT_VERSION EQUAL 6)
         communication_layer
         parser_layer
         model_layer
+        utils_layer
         Qt6::Core
         Qt6::Widgets
         Qt6::SerialPort

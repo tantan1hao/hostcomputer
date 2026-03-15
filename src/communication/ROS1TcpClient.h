@@ -9,6 +9,8 @@
 #include <QJsonObject>
 #include <QByteArray>
 #include "SharedStructs.h"
+#include "Logger.h"
+#include "ErrorHandler.h"
 
 namespace Communication {
 
@@ -37,6 +39,7 @@ public:
     bool sendEmergencyStop();
     bool sendSystemCommand(const QString &command, const QJsonObject &params = QJsonObject());
     bool sendEndEffectorControl(float x, float y, float z, float roll, float pitch, float yaw);
+    bool sendControlCommand(const Command &command);
 
     // 状态查询
     QString getConnectionStatus() const;

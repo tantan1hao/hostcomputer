@@ -125,39 +125,29 @@ std::size_t ProtocolParser::encode(const Communication::Command &command, uint8_
     uint8_t *payload = frame + kHeaderSize;
     std::size_t offset = 0;
 
-    auto writeInt16 = [&](int16_t value) {
-        if (offset + sizeof(int16_t) <= kPayloadLength) {
-            std::memcpy(payload + offset, &value, sizeof(int16_t));
-            offset += sizeof(int16_t);
+    auto writeFloat = [&](float value) {
+        if (offset + sizeof(float) <= kPayloadLength) {
+            std::memcpy(payload + offset, &value, sizeof(float));
+            offset += sizeof(float);
             return true;
         }
         return false;
     };
 
-    // 写入目标位置
-    for (int16_t value : command.target_position) {
-        if (!writeInt16(value)) {
-            qDebug() << "ProtocolParser: Failed to write target position";
-            return 0;
-        }
-    }
-
-    // 写入目标扭矩
-    for (int16_t value : command.target_torque) {
-        if (!writeInt16(value)) {
-            qDebug() << "ProtocolParser: Failed to write target torque";
-            return 0;
-        }
-    }
-
-    // 写入执行器数据
-    if (!writeInt16(command.executor_position)) {
-        qDebug() << "ProtocolParser: Failed to write executor position";
+    // 写入IMU数据
+    if (!writeFloat(command.imu_yaw) ||
+        !writeFloat(command.imu_roll) ||
+        !writeFloat(command.imu_pitch)) {
+        qDebug() << "ProtocolParser: Failed to write IMU data";
         return 0;
     }
-    if (!writeInt16(command.executor_torque)) {
-        qDebug() << "ProtocolParser: Failed to write executor torque";
-        return 0;
+
+    // 写入4个摆臂电流
+    for (int i = 0; i < 4; ++i) {
+        if (!writeFloat(command.swing_arm_current[i])) {
+            qDebug() << "ProtocolParser: Failed to write swing arm current";
+            return 0;
+        }
     }
 
     // 写入标志位
@@ -168,7 +158,7 @@ std::size_t ProtocolParser::encode(const Communication::Command &command, uint8_
         payload[offset++] = command.reserved;
     }
 
-    // 填充剩余空间为0
+    // 填充剩余空���为0
     if (offset < kPayloadLength) {
         std::memset(payload + offset, 0, kPayloadLength - offset);
     }

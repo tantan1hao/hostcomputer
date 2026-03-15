@@ -42,6 +42,7 @@ if(QT_VERSION EQUAL 6)
         Qt6::Network
         Qt6::SerialPort
         Qt6::Gui
+        utils_layer
     )
 else()
     target_link_libraries(communication_layer PUBLIC
