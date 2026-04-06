@@ -1,0 +1,6 @@
+build/
+build_test/
+test-logs/
+
+*.user
+*.autosave

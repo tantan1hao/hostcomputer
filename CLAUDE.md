@@ -4,406 +4,115 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-这是一个基于Qt6的C++桌面应用程序（上位机），用于机器人电机控制、实时监控和多摄像头显示。
+基于Qt6的C++桌面上位机应用，用于机器人电机控制、实时监控和多摄像头显示。通过TCP/JSON与Intel NUC下位机（Ubuntu 20.04 + ROS1）通信，支持RTSP视频流、手柄/键盘控制、IMU姿态显示、CO2传感器等功能。
 
-**系统架构**:
 ```
-┌─────────────────┐         TCP/JSON          ┌─────────────────┐
-│   Windows PC    │ ◄────────────────────────► │  Intel NUC      │
-│   (上位机)       │         Port 9090           │  (下位机)        │
-│   Qt6 App       │                            │  Ubuntu 20.04   │
-└────────┬────────┘                            │  ROS1           │
-         │                                     └────────┬────────┘
-         │                                              │
-         │         USB CDC / 串口                       │
-         │ ◄──────────────────────────────────────────► │
-         │           52字节协议帧                       │
-         │                                              │
-         │         UDP MJPEG                           │
-         │ ◄──────────────────────────────────────────► │
-         │           Port 5000                          │
-         │                                              │
-         ▼                                              ▼
-    ┌─────────┐                                    ┌─────────┐
-    │ 6路视频 │                                    │ 摄像头  │
-    │ 显示    │                                    │ 模组    │
-    └─────────┘                                    └─────────┘
+Windows PC (上位机 Qt6)  ◄──TCP/JSON Port 9090──►  Intel NUC (下位机 ROS1)
+                         ◄──RTSP视频流──────────►  摄像头模组 (5路)
 ```
-
-**设备说明**:
-- **上位机**: Windows PC 运行本Qt应用程序
-- **下位机**: Intel NUC 运行 Ubuntu 20.04 + ROS1，负责电机控制和传感器数据处理
-- **ESP32**: 额外模块，通过USB CDC与上位机通信，用于特定功能（如关节数据采集）
-
-项目采用四层分层架构设计，使用CMake构建系统，目标平台为Windows。
 
 ## 构建命令
 
-### Windows平台构建
 ```bash
-# 创建构建目录
-mkdir build
-cd build
+# 在项目根目录下（使用Qt Creator配置的构建目录）
+cd build/Desktop_Qt_6_8_3_MinGW_64_bit-Debug
 
-# 配置CMake项目（根据环境选择生成器）
-# MinGW环境
-cmake .. -G "MinGW Makefiles"
-# 或使用Ninja（如果已安装）
-cmake .. -G "Ninja"
-
-# 编译项目
-# MinGW
-mingw32-make
-# 或使用Ninja
+# 增量编译
+cmake --build .
+# 或直接
 ninja
 
-# 运行程序
-./hostcomputer.exe
+# 清理重建
+ninja clean && ninja
+
+# 从头配置（如修改了CMakeLists.txt）
+cmake ../.. -G "Ninja"
+ninja
 ```
 
-### 开发调试
-```bash
-# 增量编译（build目录下）
-mingw32-make  # 或 ninja
-
-# 清理构建产物
-mingw32-make clean  # 或 ninja clean
-
-# 重新配置CMake
-cmake .. -G "MinGW Makefiles"
-```
+**重要**：项目使用 `-O0` 全局禁用优化，绕过 GCC 13.1 汇编器 Segmentation fault 的已知bug。不要添加优化标志。
 
 ## 分层架构
 
-项目严格遵循四层架构，每层只能调用下层，不能跨层调用：
-
 ```
-┌─────────────────┐
-│   MainWindow    │ ← UI层，主窗口
-│   Controller    │ ← 业务逻辑层（src/controller/）
-├─────────────────┤
-│ Communication   │ ← 通信层（src/communication/）
-├─────────────────┤
-│     Parser      │ ← 解析层（src/parser/）
-├─────────────────┤
-│      Model      │ ← 模型层（src/model/）
-└─────────────────┘
-```
-
-### 1. Communication层 (src/communication/)
-**职责**: TCP、串口、UDP通信管理
-
-**核心组件**:
-- `ROS1TcpClient`: 与Intel NUC (Ubuntu ROS1) 的TCP通信，JSON格式数据交换 ⭐主要通道
-- `SerialPortManager`: 串口设备管理、ESP32 USB CDC通信
-- `UdpVideoReceiver`: UDP MJPEG视频流接收
-- `SharedStructs.h`: 共享数据结构定义
-
-**关键数据结构** (SharedStructs.h):
-```cpp
-namespace Communication {
-    struct JointState {
-        int16_t position;      // 关节位置
-        int16_t current;       // 关节电流
-    };
-
-    struct ESP32State {
-        std::array<JointState, 6> joints;  // 6个关节数据
-        int16_t executor_position;
-        int16_t executor_torque;
-        uint8_t executor_flags;
-        uint8_t reserved;
-    };
-
-    struct Command {
-        std::array<int16_t, 6> target_position;
-        std::array<int16_t, 6> target_torque;
-        int16_t executor_position;
-        int16_t executor_torque;
-        uint8_t command_flags;
-        uint8_t reserved;
-    };
-}
+┌─────────────────────────────────────────────────┐
+│  MainWindow (mainwindow.h/cpp/ui)               │ ← UI层：主窗口、菜单、状态栏
+│  + QML (RobotView.qml + RobotViewModel)         │
+├─────────────────────────────────────────────────┤
+│  Controller (src/controller/)                    │ ← 业务逻辑层
+│  + UI控件: RtspPlayerWidget, CO2DisplayWidget,   │
+│    GamepadDisplayWidget, DisplayLayoutManager    │
+│  + 输入: KeyboardController, HandleKey(XInput)   │
+├─────────────────────────────────────────────────┤
+│  Communication (src/communication/)              │ ← 通信层：仅TCP/JSON
+│  ROS1TcpClient + SharedStructs                   │
+├─────────────────────────────────────────────────┤
+│  Utils (src/utils/)                              │ ← 工具层
+│  Logger + ErrorHandler                           │
+└─────────────────────────────────────────────────┘
 ```
 
-**规则**:
-- ✅ 管理设备连接和数据传输
-- ✅ 发送和接收原始数据帧
-- ❌ 不包含业务逻辑
-- ✅ 只发出raw frame（原始数据帧）
+每层编译为独立静态库。依赖方向：上层 → 下层，通过Qt信号槽解耦。
 
-### 2. Parser层 (src/parser/)
-**职责**: 将原始数据(QByteArray)解析为结构化数据
+### 层级规则
+- **Communication层**：只负责TCP连接和原始JSON收发，不含业务逻辑。通过signal将数据向上传递
+- **Controller层**：协调通信层，提供统一业务接口（`sendVelocityCommand`, `sendJointControl`等）给UI层。也包含自定义UI控件
+- **Utils层**：Logger日志和ErrorHandler，被所有层依赖
+- **UI层**（根目录）：MainWindow组装所有组件，处理键盘/手柄事件分发
 
-**核心组件**:
-- `ProtocolParser`: 52字节USB CDC协议帧编解码
-- `motor_state.h`: MotorState和JointState结构体定义
+### 关键数据流
 
-**协议格式**:
-- 帧结构: Header(0xAA) + Version + Length + Payload(48B) + Checksum
-- 帧长度: 52字节固定
-- 关节数量: 6个关节
+下位机状态 → `ROS1TcpClient`(TCP JSON接收) → `Controller`(信号转发) → `MainWindow`(更新UI)
 
-**规则**:
-- ✅ 处理协议解析和数据转换
-- ✅ 数据校验和完整性检查
-- ❌ 不发送命令
-- ❌ 不访问UI
+用户操作 → `MainWindow`(事件捕获) → `KeyboardController`/`HandleKey` → `Controller`(命令封装) → `ROS1TcpClient`(JSON发送) → 下位机
 
-### 3. Model层 (src/model/)
-**职责**: UI数据模型，使用QObject+Q_PROPERTY实现数据绑定
+## 核心组件
 
-**核心组件**:
-- `MotorModel`: 电机数据模型
+### 通信 (src/communication/)
+- **`ROS1TcpClient`**：异步TCP客户端，JSON格式数据交换，自动重连，心跳检测。主要信号：`motorStateReceived`, `co2DataReceived`, `imuDataReceived`, `cameraInfoReceived`
+- **`SharedStructs.h`**：定义`Communication::MotorState`, `Communication::Command`等跨层数据结构
 
-**规则**:
-- ✅ 只用于UI数据绑定
-- ❌ 不包含业务逻辑
-- ❌ 不包含通信逻辑
+### 控制 (src/controller/)
+- **`Controller`**：业务逻辑核心，封装所有与下位机交互的命令接口
+- **`KeyboardController`**：键盘按键 → 速度命令映射（车体/机械臂双模式）
+- **`HandleKey`**：XInput手柄驱动，轮询手柄状态并发出`ControllerState`信号
+- **`RtspPlayerWidget`**：基于`QMediaPlayer`的RTSP视频播放控件，5路并发
+- **`DisplayLayoutManager`**：管理2×3视频网格布局
+- **`RobotViewModel`**：QML与C++桥接，暴露Roll/Pitch/Yaw属性给3D姿态视图
 
-### 4. Controller层 (src/controller/)
-**职责**: 业务逻辑处理，协调其他各层
-
-**核心组件**:
-- `Controller`: 主控制器类
-- `RealCameraManager`: 真实摄  头管理器
-- `VideoWidget`: 视频显示控件
-
-**摄像头管理系统**:
-```cpp
-class RealCameraManager : public QObject {
-    bool startCamera(int cameraId, VideoWidget* displayWidget);
-    void stopCamera(int cameraId);
-    void stopAllCameras();
-    QStringList getAvailableCameras() const;
-
-signals:
-    void cameraStarted(int cameraId, const QString& cameraName);
-    void cameraStopped(int cameraId);
-    void cameraError(int cameraId, const QString& error);
-};
-```
-
-**规则**:
-- ✅ 负责业务逻辑处理
-- ✅ 协调各层之间的交互
-- ❌ 不处理底层通信细节（交给Communication层）
-- ❌ 不直接操作QByteArray（交给Parser层）
-
-## 数据流架构
-
-### 主通讯通道 (TCP + JSON) - 与Intel NUC下位机
-
-```
-Intel NUC (下位机)                    Windows PC (上位机)
-Ubuntu 20.04 + ROS1                   Qt6 Application
-     │                                       │
-     │  ① 发送状态数据 (JSON)                │
-     ├─────────────────────────────────────► │
-     │      TCP Port 9090                    │
-     │   {                                   │
-     │     "type": "motor_state",            │
-     │     "data": {                         │
-     │       "joints": [...]                 │
-     │     }                                 │
-     │   }                                   │
-     │                                       │
-     │                              ② ROS1TcpClient接收
-     │                                       │
-     │                              ③ JSON解析 → ESP32State
-     │                                       │
-     │                              ④ emit motorStateReceived
-     │                                       │
-     │                              ⑤ MainWindow更新UI
-     │
-     │  ⑥ 发送控制命令 (JSON)              │
-     │  ◄─────────────────────────────────────┤
-     │      用户操作触发                       │
-```
-
-### 辅助通道 (USB CDC) - 与ESP32模块
-
-```
-ESP32模块                                Windows PC (上位机)
-     │                                       │
-     │  ① 52字节协议帧                       │
-     ├─────────────────────────────────────► │
-     │      USB CDC / 串口                   │
-     │   Header(0xAA) + Version + ...        │
-     │                                       │
-     │                              ② SerialPortManager接收
-     │                                       │
-     │                              ③ ProtocolParser解析
-     │                                       │
-     │                              ④ emit esp32StateReceived
-     │                                       │
-     │                              ⑤ MainWindow显示关节数据
-```
-
-### 视频流通道 (UDP MJPEG) - 来自NUC/摄像头
-
-```
-Intel NUC / 摄像头                    Windows PC (上位机)
-     │                                       │
-     │  ① JPEG帧分包发送                     │
-     ├─────────────────────────────────────► │
-     │      UDP Port 5000                    │
-     │   Header + Data分片 + End             │
-     │                                       │
-     │                              ② UdpVideoReceiver接收
-     │                                       │
-     │                              ③ 分片重组
-     │                                       │
-     │                              ④ QImage解码
-     │                                       │
-     │                              ⑤ VideoWidget显示
-```
+### 控制模式
+- **Vehicle模式**：键盘WASD/手柄摇杆控制车体运动（linearX/Y, angularZ）
+- **Arm模式**：控制机械臂关节和末端执行器
 
 ## 技术栈
 
-- **框架**: Qt6.8.3 (兼容Qt5)
-- **C++标准**: C++20
-- **构建系统**: CMake 3.16+
-- **Qt模块**: Core, Widgets, Network, SerialPort, Multimedia, MultimediaWidgets
-- **可选依赖**: OpenCV 4.x (摄像头备用方案)
+- Qt 6.8.3 (MinGW 64-bit), C++20, CMake 3.16+
+- Qt模块：Core, Widgets, Network, Multimedia, MultimediaWidgets, Quick, QuickWidgets
+- Windows XInput（手柄支持）
+- QML用于3D机器人姿态渲染（`resources/qml/RobotView.qml`）
 
-## Qt模块依赖
+## 通讯协议
 
-### 必需模块
-- Qt6::Core (核心功能)
-- Qt6::Widgets (传统Widget UI)
-- Qt6::Network (网络通信)
-- Qt6::SerialPort (串口通信)
-- Qt6::Multimedia (摄像头支持)
-- Qt6::MultimediaWidgets (视频显示控件)
+### TCP JSON协议 (Port 9090)
 
-### 可选模块
-- Qt6::OpenGL + Qt6::OpenGLWidgets (3D渲染)
-- Qt6::Charts (图表显示)
+接收：`motor_state`（关节位置/电流）、`co2_data`、`imu_data`、`camera_info`（含RTSP URL）
+发送：`motor_command`、`velocity_command`、`joint_control`、`emergency_stop`、`end_effector`
 
-## 关键设计原则
+摄像头信息推送触发RTSP自动播放：`camera_id` 0-4对应2×3网格前5格，`online: true`时启动播放。
 
-1. **严格遵循分层架构**: 每层只能调用下层，不能跨层调用
-2. **使用Qt信号槽机制**: 实现异步通信和组件解耦
-3. **模块化设计**: 每层作为独立的静态库
-4. **实时性考虑**: 作为上位机应用，重点关注通信实时性和数据处理的稳定性
+## 开发注意事项
 
-## 命名空间
+- 修改CMakeLists.txt后务必验证编译通过，不要随意添加/删除依赖
+- GCC 13.1已知bug：不要对`mainwindow.cpp`、`handlekey.cpp`、`ErrorHandler.cpp`启用优化
+- 代码修改后立即编译验证，不要批量修改后再编译
+- UI布局修改前先确认布局方案，避免反复迭代
 
-- `Communication::`: 通信层相关类和数据结构
-- `Parser::`: 解析层相关类
+## 测试与调试
 
-## 已实现功能
-
-### 通讯功能
-1. **TCP JSON通信** ⭐: 与Intel NUC (Ubuntu ROS1) 主通讯通道
-   - 接收电机状态数据
-   - 发送控制命令
-   - 自动重连机制
-2. **串口通信**: ESP32模块USB CDC通信
-3. **UDP视频接收**: MJPEG视频流，支持6路摄像头
-
-### UI功能
-1. **多摄像头管理**: 最多6路USB摄像头并发显示
-2. **实时数据显示**: 关节位置、电流、执行器状态
-3. **系统状态监控**: 通讯状态、统计信息
-
-## 通讯协议详解
-
-### TCP JSON协议 (与Intel NUC)
-
-**接收状态数据格式**:
-```json
-{
-  "type": "motor_state",
-  "timestamp": 1234567890,
-  "data": {
-    "joints": [
-      {"id": 0, "position": 1000, "current": 500},
-      {"id": 1, "position": 2000, "current": 600},
-      ...
-    ],
-    "executor": {
-      "position": 500,
-      "torque": 1000
-    }
-  }
-}
+```bash
+# 模拟下位机ROS1服务器（用于无硬件调试）
+python scripts/mock_ros1_server.py
 ```
-
-**发送控制命令格式**:
-```json
-{
-  "type": "motor_command",
-  "timestamp": 1234567890,
-  "data": {
-    "joints": [
-      {"id": 0, "target_position": 1500, "target_torque": 800},
-      ...
-    ],
-    "executor": {
-      "target_position": 600,
-      "target_torque": 1200
-    }
-  }
-}
-```
-
-**摄像头信息推送格式** (下位机 → 上位机):
-```json
-{
-  "type": "camera_info",
-  "camera_id": 0,
-  "online": true,
-  "codec": "h265",
-  "width": 1280,
-  "height": 720,
-  "fps": 30,
-  "bitrate_kbps": 2000,
-  "rtsp_url": "rtsp://192.168.1.100:8554/cam0"
-}
-```
-- `camera_id`: 0-4，对应上位机 2x3 网格的前 5 个格子
-- `online`: true 时自动启动 RTSP 播放，false 时停止播放
-- 上位机通过 `RtspPlayerWidget` 控件接收并自动播放 RTSP 视频流
-
-### USB CDC协议 (与ESP32)
-
-**52字节固定帧结构**:
-```
-Offset  Size    Field           Description
------  -----   ------           -----------
-0      1B      Header          0xAA 帧头
-1      1B      Version         0x01 协议版本
-2      1B      Length          52 帧长度
-3-26   24B     joints[6]       6关节×(位置+电流)
-27-28  2B      executor_pos    执行器位置
-29-30  2B      executor_torque 执行器扭矩
-31     1B      flags           标志位
-32     1B      reserved        保留
-33-50  18B     padding         填充0
-51     1B      Checksum        校验和
-```
-
-### UDP MJPEG协议 (视频流)
-
-**UDP包结构**:
-```
-Offset  Size    Field           Description
------  -----   ------           -----------
-0      1B      magic           0xAA
-1      1B      frameType       01=Header 02=Data 03=End
-2-3    2B      frameId         帧序号
-4-5    2B      packetIndex     分片序号
-6-7    2B      totalPackets    总分片数
-8-11   4B      payloadSize     JPEG大小
-12-15  4B      timestamp       时间戳
-16     1B      cameraId        摄像头ID(0-5)
-17-19  3B      reserved        保留
-20+    ~1400B  payload         JPEG数据分片
-```
-
----
 
 ## 对话要求
 对我的称呼为爸爸，每次对话必须以喵字结尾
