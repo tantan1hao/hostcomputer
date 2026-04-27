@@ -62,6 +62,10 @@ public:
         quint64 ackPendingCount;
         quint64 ackReceivedCount;
         quint64 ackTimeoutCount;
+        quint64 protocolErrorCount;
+        quint64 heartbeatTimeoutCount;
+        qint64 lastHeartbeatRttMs;
+        qint64 lastHeartbeatAckMs;
     };
     Stats getStats() const;
     void resetStats();
@@ -117,9 +121,17 @@ private:
     quint64 nextSequence();
     void registerPendingAck(const QJsonObject &message, const QString &ackType);
     void handleAckMessage(const QJsonObject &message, qint64 receivedAtMs);
+    void handleHeartbeatAck(const QJsonObject &message, qint64 receivedAtMs);
     void failPendingAck(const PendingAck &pending, const QString &eventType,
                         const QString &message, int code, qint64 nowMs);
     void failAllPendingAcks(const QString &eventType, const QString &message, int code);
+    bool validateIncomingMessage(const QJsonObject &message, QString *errorMessage, int *errorCode) const;
+    bool validateCameraObject(const QJsonObject &camera, QString *errorMessage, int *errorCode) const;
+    void processCameraInfoMessage(const QJsonObject &message);
+    void processCameraListResponse(const QJsonObject &message);
+    void emitProtocolError(qint64 seq, int code, const QString &message);
+    void closeForProtocolError(qint64 seq, int code, const QString &message);
+    void trimExpiredHeartbeats(qint64 nowMs);
     void processReceivedData();
     MotorState parseMotorState(const QJsonObject &json);
     void setHeartbeatOnline(bool online);
@@ -136,12 +148,14 @@ private:
 
     bool m_isConnected;
     bool m_autoReconnect;
+    bool m_manualDisconnectRequested;
     bool m_heartbeatOnline;
     int m_reconnectAttempts;
     qint64 m_lastMessageReceivedMs;
     qint64 m_lastHeartbeatAckMs;
     quint64 m_nextSequence;
     QHash<quint64, PendingAck> m_pendingAcks;
+    QHash<quint64, qint64> m_pendingHeartbeats;
 
     // 统计信息
     Stats m_stats;
@@ -152,6 +166,8 @@ private:
     static const int RECONNECT_INTERVAL_MS = 3000;
     static const int ACK_TIMEOUT_MS = 2000;
     static const int ACK_CHECK_INTERVAL_MS = 100;
+    static const int MAX_FRAME_BYTES = 1024 * 1024;
+    static const int MAX_CAMERA_COUNT = 5;
 };
 
 } // namespace Communication

@@ -67,6 +67,10 @@ public:
         quint64 ackPendingCount;
         quint64 ackReceivedCount;
         quint64 ackTimeoutCount;
+        quint64 protocolErrorCount;
+        quint64 heartbeatTimeoutCount;
+        qint64 lastHeartbeatRttMs;
+        qint64 lastHeartbeatAckMs;
     };
     Statistics getTcpStatistics() const;
 

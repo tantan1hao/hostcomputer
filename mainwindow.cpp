@@ -364,11 +364,16 @@ void MainWindow::updateBandwidthAndPacketLoss()
     if (deltaSent > 0 && deltaSent > deltaReceived) {
         lossRate = (double)(deltaSent - deltaReceived) / deltaSent * 100.0;
     }
-    const QString bandwidthText = QString("%1 | 丢包: %2% | ACK: %3/%4")
+    const QString heartbeatRtt = stats.lastHeartbeatRttMs >= 0
+                                     ? QString("%1ms").arg(stats.lastHeartbeatRttMs)
+                                     : QStringLiteral("N/A");
+    const QString bandwidthText = QString("%1 | 丢包: %2% | ACK: %3/%4 | RTT: %5 | 协议错: %6")
                                       .arg(pressure)
                                       .arg(lossRate, 0, 'f', 1)
                                       .arg(stats.ackPendingCount)
-                                      .arg(stats.ackTimeoutCount);
+                                      .arg(stats.ackTimeoutCount)
+                                      .arg(heartbeatRtt)
+                                      .arg(stats.protocolErrorCount);
     ui->label_cpu_value->setText(bandwidthText);
     if (m_telemetryPanel) {
         m_telemetryPanel->setBandwidthText(bandwidthText);
