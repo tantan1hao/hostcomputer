@@ -1,83 +1,14 @@
 #!/usr/bin/env python3
 import argparse
 import json
-import math
 import socket
 import threading
-import time
-from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-
-PROTOCOL_VERSION = 1
-MAX_FRAME_BYTES = 1024 * 1024
-DEFAULT_WATCHDOG_MS = 500
-
-
-def now_ms() -> int:
-    return int(time.time() * 1000)
-
-
-def clamp(value: float, low: float, high: float) -> float:
-    return max(low, min(high, value))
-
-
-def json_line(payload: Dict[str, Any]) -> bytes:
-    return (json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
-
-
-@dataclass
-class TwistCommand:
-    linear_x: float = 0.0
-    angular_z: float = 0.0
-    source: str = "idle"
-
-
-@dataclass
-class BridgeState:
-    emergency_active: bool = False
-    emergency_source: str = ""
-    control_mode: str = "vehicle"
-    motor_initialized: bool = True
-    motor_enabled: bool = True
-    last_error_code: int = 0
-    last_error_message: str = ""
-    last_operator_seq: int = 0
-    last_valid_input_ms: int = 0
-    watchdog_active: bool = False
-    last_twist: TwistCommand = field(default_factory=TwistCommand)
-
-
-class OutputAdapter:
-    def publish_twist(self, twist: TwistCommand) -> None:
-        raise NotImplementedError
-
-
-class DryRunOutput(OutputAdapter):
-    def publish_twist(self, twist: TwistCommand) -> None:
-        print(
-            f"[bridge] cmd_vel source={twist.source} "
-            f"linear_x={twist.linear_x:+.3f} angular_z={twist.angular_z:+.3f}",
-            flush=True,
-        )
-
-
-class RosOutput(OutputAdapter):
-    def __init__(self, node_name: str, topic: str) -> None:
-        import rospy
-        from geometry_msgs.msg import Twist
-
-        self._rospy = rospy
-        self._twist_type = Twist
-        rospy.init_node(node_name, anonymous=False)
-        self._publisher = rospy.Publisher(topic, Twist, queue_size=1)
-        rospy.loginfo("host_bridge_node publishing Twist to %s", topic)
-
-    def publish_twist(self, twist: TwistCommand) -> None:
-        msg = self._twist_type()
-        msg.linear.x = twist.linear_x
-        msg.angular.z = twist.angular_z
-        self._publisher.publish(msg)
+from bridge_protocol import DEFAULT_WATCHDOG_MS, MAX_FRAME_BYTES, PROTOCOL_VERSION
+from bridge_protocol import clamp, json_line, now_ms
+from bridge_state import BridgeState, TwistCommand
+from output_adapters import DryRunOutput, OutputAdapter, RosOutput
 
 
 class HostBridgeServer:
