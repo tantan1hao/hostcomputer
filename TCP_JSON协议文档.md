@@ -6,6 +6,13 @@
 
 > 当前上位机发送协议以 `docs/通信与视频链路改造计划.md` 中的协议 v1 为准。旧版 `cmd_vel` JSON 帧已经废弃；上位机只发送 `operator_input` 输入快照，下位机 bridge 自行解析并发布 ROS `/cmd_vel` 或其他内部控制指令。
 
+## 通用帧约束
+
+- 每条 JSON 帧以 `\n` 结尾。
+- 单帧最大长度：`1048576` 字节。
+- v1 帧应包含 `protocol_version: 1`、`seq`、`timestamp_ms`。
+- 上位机接收侧会对关键帧做基础 schema 校验；坏 JSON、超大帧、缺关键字段会生成 `protocol_error`。
+
 ---
 
 ## 一、上位机 → 下位机（发送）
@@ -241,7 +248,113 @@ mock server 可用环境变量模拟 ACK 行为：
 
 ---
 
+### 8. sync_request — 状态同步请求
+
+上位机连接或重连后自动发送，请求下位机返回当前系统快照。
+
+```json
+{
+  "type": "sync_request",
+  "protocol_version": 1,
+  "seq": 3010,
+  "timestamp_ms": 1709971200000,
+  "params": {
+    "reason": "connected"
+  }
+}
+```
+
+### 9. camera_list_request — 摄像头列表请求
+
+上位机连接或重连后自动发送，请求下位机返回全部摄像头状态。
+
+```json
+{
+  "type": "camera_list_request",
+  "protocol_version": 1,
+  "seq": 3020,
+  "timestamp_ms": 1709971200000
+}
+```
+
+---
+
 ## 二、下位机 → 上位机（接收）
+
+### 0. hello / capabilities — bridge 握手
+
+下位机 bridge 建立连接后可以主动发送 `hello` 和 `capabilities`，用于说明 bridge 身份和支持的协议能力。
+
+```json
+{
+  "type": "hello",
+  "protocol_version": 1,
+  "seq": 0,
+  "timestamp_ms": 1709971200000,
+  "bridge_name": "host_bridge_node",
+  "bridge_version": "1.0.0",
+  "robot_id": "robot_001"
+}
+```
+
+```json
+{
+  "type": "capabilities",
+  "protocol_version": 1,
+  "seq": 0,
+  "timestamp_ms": 1709971200000,
+  "supports": [
+    "operator_input",
+    "heartbeat_ack",
+    "critical_ack",
+    "sync_request",
+    "camera_list_request"
+  ],
+  "max_frame_bytes": 1048576
+}
+```
+
+### 0.1 system_snapshot / camera_list_response — 同步响应
+
+```json
+{
+  "type": "system_snapshot",
+  "protocol_version": 1,
+  "seq": 3010,
+  "timestamp_ms": 1709971200100,
+  "control_mode": "vehicle",
+  "emergency": { "active": false, "source": "" },
+  "motor": { "initialized": true, "enabled": true },
+  "modules": {
+    "base": "online",
+    "arm": "online",
+    "camera": "degraded"
+  },
+  "last_error": { "code": 0, "message": "" }
+}
+```
+
+```json
+{
+  "type": "camera_list_response",
+  "protocol_version": 1,
+  "seq": 3020,
+  "timestamp_ms": 1709971200100,
+  "cameras": [
+    {
+      "camera_id": 0,
+      "name": "front",
+      "online": true,
+      "rtsp_url": "rtsp://192.168.1.50:8554/front",
+      "codec": "h264",
+      "width": 1280,
+      "height": 720,
+      "fps": 25,
+      "bitrate_kbps": 2500
+    }
+  ]
+}
+```
 
 ### 1. motor_state — 电机状态数据
 
