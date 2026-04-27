@@ -101,6 +101,12 @@ MVP 映射：
 8. 发送 `emergency_stop`，验证 ACK 和 `emergency_state`。
 9. 等待 watchdog，验证零速度安全输出。
 
+当前落地文件：
+
+- `ros1_bridge/host_bridge_node.py`：bridge MVP，支持 `--dry-run` / `--ros`。
+- `scripts/bridge_loopback_test.py`：本机回环自动化测试。
+- `scripts/run_all_tests.sh`：默认运行 build smoke、protocol smoke 和 bridge loopback。
+
 ## 人工 GUI 回环测试
 
 1. 启动 bridge：
