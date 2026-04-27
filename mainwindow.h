@@ -5,16 +5,14 @@
 #include <QTimer>
 #include <QDateTime>
 #include <QLabel>
-#include <array>
 #include "src/communication/SharedStructs.h"
 
 #include "src/controller/controller.h"
 #include "src/controller/KeyboardController.h"
-#include "src/controller/DisplayLayoutManager.h"
+#include "src/controller/CameraGridWidget.h"
 #include "src/controller/CO2DisplayWidget.h"
 #include "src/controller/GamepadDisplayWidget.h"
 #include "src/controller/handlekey.h"
-#include "src/controller/RtspPlayerWidget.h"
 #include "src/controller/RobotAttitudeWidget.h"
 
 QT_BEGIN_NAMESPACE
@@ -119,17 +117,14 @@ private:
     // 键盘控制器
     KeyboardController* m_keyboardController;
 
-    // 布局管理器
-    DisplayLayoutManager* m_displayLayout;
+    // 摄像头网格
+    CameraGridWidget* m_cameraGridWidget;
 
     // CO2显示控件
     CO2DisplayWidget* m_co2Widget;
 
     // 手柄显示控件
     GamepadDisplayWidget* m_gamepadWidget;
-
-    // RTSP视频播放控件 (索引0-4)
-    std::array<RtspPlayerWidget*, 5> m_rtspWidgets = {};
 
     // 手柄输入驱动
     HandleKey* m_handleKey;

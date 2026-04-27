@@ -14,6 +14,8 @@
 set(CONTROLLER_SOURCES
     controller.cpp
     controller.h
+    CameraGridWidget.cpp
+    CameraGridWidget.h
     CO2DisplayWidget.cpp
     CO2DisplayWidget.h
     GamepadDisplayWidget.cpp

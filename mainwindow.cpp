@@ -35,7 +35,7 @@ MainWindow::MainWindow(QWidget *parent)
     , ui(new Ui::MainWindow)
     , m_controller(nullptr)
     , m_keyboardController(nullptr)
-    , m_displayLayout(nullptr)
+    , m_cameraGridWidget(nullptr)
     , m_co2Widget(nullptr)
     , m_gamepadWidget(nullptr)
     , m_handleKey(nullptr)
@@ -115,14 +115,7 @@ void MainWindow::setupController()
 
 void MainWindow::setupDisplayLayout()
 {
-    // 创建布局管理器（2行3列）
-    m_displayLayout = new DisplayLayoutManager(2, 3, this);
-
-    // 创建5个RTSP视频播放控件，放入索引0-4
-    for (int i = 0; i < 5; ++i) {
-        m_rtspWidgets[i] = new RtspPlayerWidget(i);
-        m_displayLayout->setWidget(i, m_rtspWidgets[i]);
-    }
+    m_cameraGridWidget = new CameraGridWidget(this);
 
     // 索引5：垂直堆叠容器，CO2置顶，剩余空间留给后续控件
     QWidget *statusPanel = new QWidget();
@@ -136,7 +129,7 @@ void MainWindow::setupDisplayLayout()
 
     statusLayout->addStretch();
 
-    m_displayLayout->setWidget(5, statusPanel);
+    m_cameraGridWidget->setAuxiliaryWidget(statusPanel);
 
     // 创建手柄显示控件，放到姿态模型右侧
     m_gamepadWidget = new GamepadDisplayWidget();
@@ -155,8 +148,7 @@ void MainWindow::setupDisplayLayout()
     gamepadColumn->setMaximumWidth(200);
     ui->horizontalLayout_model_gamepad->addWidget(gamepadColumn);
 
-    // 把 DisplayLayoutManager 塞进 group_cameras 的布局中
-    ui->group_cameras->layout()->addWidget(m_displayLayout);
+    ui->group_cameras->layout()->addWidget(m_cameraGridWidget);
 
     QVBoxLayout *carLayout = new QVBoxLayout(ui->CarWidget);
     carLayout->setContentsMargins(0, 0, 0, 0);
@@ -1140,8 +1132,8 @@ void MainWindow::onCameraInfoReceived(int cameraId, bool online, const QString &
                                       int width, int height, int fps, int bitrate,
                                       const QString &rtspUrl)
 {
-    if (cameraId >= 0 && cameraId < 5 && m_rtspWidgets[cameraId]) {
-        m_rtspWidgets[cameraId]->setCameraInfo(rtspUrl, online, codec, width, height, fps, bitrate);
+    if (m_cameraGridWidget) {
+        m_cameraGridWidget->setCameraInfo(cameraId, rtspUrl, online, codec, width, height, fps, bitrate);
         addCommand(QString("[TCP] 摄像头%1 %2 %3")
                    .arg(cameraId).arg(online ? "上线" : "离线").arg(rtspUrl));
     }
