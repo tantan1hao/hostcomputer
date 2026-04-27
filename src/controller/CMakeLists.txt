@@ -26,6 +26,8 @@ set(CONTROLLER_SOURCES
     handlekey.h
     RtspPlayerWidget.cpp
     RtspPlayerWidget.h
+    RobotAttitudeWidget.cpp
+    RobotAttitudeWidget.h
     RobotViewModel.cpp
     RobotViewModel.h
 )
@@ -43,6 +45,9 @@ target_link_libraries(controller_layer PUBLIC
     Qt6::Network
     Qt6::Multimedia
     Qt6::MultimediaWidgets
+    Qt6::Qml
+    Qt6::Quick
+    Qt6::QuickWidgets
 
     # 层级依赖
     communication_layer

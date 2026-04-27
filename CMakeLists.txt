@@ -21,6 +21,7 @@ find_package(Qt6 QUIET COMPONENTS
     Network
     Multimedia
     MultimediaWidgets
+    Qml
     Quick           # <-- 确保添加
     QuickWidgets    # <-- 用于在 Widget 中嵌入 QML
 )
@@ -38,7 +39,8 @@ if(NOT Qt6_FOUND)
 else()
     message(STATUS "Qt6 found successfully")
     # 尝试添加可选的Qt6模块
-        find_package(Qt6 QUIET COMPONENTS Quick)
+    find_package(Qt6 QUIET COMPONENTS Qml)
+    find_package(Qt6 QUIET COMPONENTS Quick)
     find_package(Qt6 QUIET COMPONENTS QuickWidgets)
     find_package(Qt6 QUIET COMPONENTS Quick3D)
     find_package(Qt6 QUIET COMPONENTS OpenGL)

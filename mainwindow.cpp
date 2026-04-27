@@ -1,9 +1,6 @@
 #include "mainwindow.h"
 #include "./ui_mainwindow.h"
 #include "src/communication/SharedStructs.h"
-#include "src/controller/RobotViewModel.h"
-#include <QQuickWidget>
-#include <QQmlContext>
 #include <QtGlobal>
 #include <QSpinBox>
 
@@ -161,25 +158,10 @@ void MainWindow::setupDisplayLayout()
     // 把 DisplayLayoutManager 塞进 group_cameras 的布局中
     ui->group_cameras->layout()->addWidget(m_displayLayout);
 
-    // 初始化3D机器人姿态视图，嵌入到 CarWidget
-    m_robotViewModel = new RobotViewModel(this);
-
-    m_robotView = new QQuickWidget(ui->CarWidget);
-    m_robotView->rootContext()->setContextProperty("robotViewModel", m_robotViewModel);
-    m_robotView->setSource(QUrl("qrc:/resources/qml/RobotView.qml"));
-    m_robotView->setResizeMode(QQuickWidget::SizeRootObjectToView);
-
-    // 打印加载错误
-    connect(m_robotView, &QQuickWidget::statusChanged, this, [this](QQuickWidget::Status status) {
-        if (status == QQuickWidget::Error) {
-            for (const auto &err : m_robotView->errors())
-                qWarning() << "[RobotView]" << err.toString();
-        }
-    });
-
     QVBoxLayout *carLayout = new QVBoxLayout(ui->CarWidget);
     carLayout->setContentsMargins(0, 0, 0, 0);
-    carLayout->addWidget(m_robotView);
+    m_robotAttitudeWidget = new RobotAttitudeWidget(ui->CarWidget);
+    carLayout->addWidget(m_robotAttitudeWidget);
     ui->CarWidget->setLayout(carLayout);
 }
 
@@ -389,15 +371,16 @@ void MainWindow::updateCarAttitude(double roll, double pitch, double yaw)
     m_pitch = pitch;
     m_yaw = yaw;
 
-    if (m_robotViewModel)
-        m_robotViewModel->updateAttitude(roll, pitch, yaw);
+    if (m_robotAttitudeWidget) {
+        m_robotAttitudeWidget->updateAttitude(roll, pitch, yaw);
+    }
 }
 
 void MainWindow::updateJointsData(const Communication::MotorState& motorState)
 {
     // 更新3D视图腿部角度（关节0-3对应4条腿，位置值直接作为角度度数）
-    if (m_robotViewModel) {
-        m_robotViewModel->updateLegs(
+    if (m_robotAttitudeWidget) {
+        m_robotAttitudeWidget->updateLegs(
             motorState.joints[0].position / 10.0,
             motorState.joints[1].position / 10.0,
             motorState.joints[2].position / 10.0,
@@ -529,9 +512,8 @@ void MainWindow::on_action_reset_layout_triggered()
     m_roll = 0.0;
     m_pitch = 0.0;
     m_yaw = 0.0;
-    if (m_robotViewModel) {
-        m_robotViewModel->updateAttitude(0.0, 0.0, 0.0);
-        m_robotViewModel->updateLegs(0.0, 0.0, 0.0, 0.0);
+    if (m_robotAttitudeWidget) {
+        m_robotAttitudeWidget->resetView();
     }
 
     // 刷新所有UI显示（基于当前实际状态）

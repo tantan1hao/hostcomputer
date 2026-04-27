@@ -15,8 +15,7 @@
 #include "src/controller/GamepadDisplayWidget.h"
 #include "src/controller/handlekey.h"
 #include "src/controller/RtspPlayerWidget.h"
-#include "src/controller/RobotViewModel.h"
-#include <QQuickWidget>
+#include "src/controller/RobotAttitudeWidget.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -136,8 +135,7 @@ private:
     HandleKey* m_handleKey;
 
     // 3D机器人姿态视图
-    QQuickWidget* m_robotView = nullptr;
-    RobotViewModel* m_robotViewModel = nullptr;
+    RobotAttitudeWidget* m_robotAttitudeWidget = nullptr;
 
     // 状态管理
     bool m_isConnected = false;
