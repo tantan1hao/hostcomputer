@@ -351,8 +351,13 @@ class HostBridgeServer:
                 return self.input_status(seq, "dropped_expired")
             if self.state.emergency_active:
                 self.state.last_operator_seq = seq
-                self.publish_zero("emergency_active")
-                return self.input_status(seq, "ignored_emergency")
+                should_publish_zero = True
+            else:
+                should_publish_zero = False
+
+        if should_publish_zero:
+            self.publish_zero("emergency_active")
+            return self.input_status(seq, "ignored_emergency")
 
         twist = self.operator_input_to_twist(msg)
         with self.state_lock:
