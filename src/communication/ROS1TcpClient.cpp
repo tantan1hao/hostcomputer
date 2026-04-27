@@ -15,7 +15,9 @@ ROS1TcpClient::ROS1TcpClient(QObject *parent)
     , m_port(9090)
     , m_isConnected(false)
     , m_autoReconnect(true)
+    , m_heartbeatOnline(false)
     , m_reconnectAttempts(0)
+    , m_lastMessageReceivedMs(0)
     , m_heartbeatTimer(new QTimer(this))
     , m_reconnectTimer(new QTimer(this))
 {
@@ -355,6 +357,8 @@ void ROS1TcpClient::slotSendSystemCommand(const QString &command, const QString 
 void ROS1TcpClient::handleConnected()
 {
     m_isConnected = true;
+    m_lastMessageReceivedMs = QDateTime::currentMSecsSinceEpoch();
+    setHeartbeatOnline(false);
     m_reconnectAttempts = 0;
     m_reconnectTimer->stop();
     m_heartbeatTimer->start();
@@ -374,6 +378,7 @@ void ROS1TcpClient::handleDisconnected()
 {
     bool wasConnected = m_isConnected;
     m_isConnected = false;
+    setHeartbeatOnline(false);
     m_heartbeatTimer->stop();
 
     if (wasConnected) {
@@ -438,6 +443,11 @@ void ROS1TcpClient::checkConnection()
         LOG_DEBUG(MODULE, "心跳检测发现连接断开");
         handleDisconnected();
     } else {
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        if (m_lastMessageReceivedMs > 0 && now - m_lastMessageReceivedMs > HEARTBEAT_INTERVAL_MS * 3) {
+            setHeartbeatOnline(false);
+        }
+
         // 发送心跳包
         QJsonObject heartbeat;
         heartbeat["type"] = "heartbeat";
@@ -495,6 +505,8 @@ void ROS1TcpClient::processReceivedData()
         emit rawMessageReceived(line);
 
         m_stats.messagesReceived++;
+        m_lastMessageReceivedMs = QDateTime::currentMSecsSinceEpoch();
+        setHeartbeatOnline(true);
 
         // 根据消息类型处理
         QString msgType = msg["type"].toString();
@@ -565,6 +577,16 @@ MotorState ROS1TcpClient::parseMotorState(const QJsonObject &json)
 void ROS1TcpClient::emitStatsUpdate()
 {
     emit statsUpdated(m_stats);
+}
+
+void ROS1TcpClient::setHeartbeatOnline(bool online)
+{
+    if (m_heartbeatOnline == online) {
+        return;
+    }
+
+    m_heartbeatOnline = online;
+    emit heartbeatChanged(online);
 }
 
 } // namespace Communication

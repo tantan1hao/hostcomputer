@@ -217,6 +217,8 @@ void Controller::setupConnections()
                 this, &Controller::onTcpDisconnected);
         connect(m_tcpClient, &Communication::ROS1TcpClient::connectionError,
                 this, &Controller::onTcpError);
+        connect(m_tcpClient, &Communication::ROS1TcpClient::heartbeatChanged,
+                this, &Controller::tcpHeartbeatChanged);
         connect(m_tcpClient, &Communication::ROS1TcpClient::motorStateReceived,
                 this, &Controller::onTcpMotorStateReceived);
         connect(m_tcpClient, &Communication::ROS1TcpClient::co2DataReceived,

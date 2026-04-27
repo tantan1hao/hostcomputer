@@ -76,6 +76,7 @@ signals:
     void imuDataReceived(float roll, float pitch, float yaw, float accelX, float accelY, float accelZ);
     void cameraInfoReceived(int cameraId, const QString &rtspUrl, bool online,
                             const QString &codec, int width, int height, int fps, int bitrateKbps);
+    void heartbeatChanged(bool online);
 
     // 统计信息更新信号
     void statsUpdated(const Stats &stats);
@@ -101,6 +102,7 @@ private:
     bool sendMessage(const QJsonObject &message);
     void processReceivedData();
     MotorState parseMotorState(const QJsonObject &json);
+    void setHeartbeatOnline(bool online);
     void emitStatsUpdate();
 
 private:
@@ -113,7 +115,9 @@ private:
 
     bool m_isConnected;
     bool m_autoReconnect;
+    bool m_heartbeatOnline;
     int m_reconnectAttempts;
+    qint64 m_lastMessageReceivedMs;
 
     // 统计信息
     Stats m_stats;
