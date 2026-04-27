@@ -164,6 +164,64 @@ def make_ack(msg, ok=True, code=0, message="ok"):
     }
 
 
+def make_hello():
+    return {
+        "type": "hello",
+        "protocol_version": 1,
+        "seq": 0,
+        "timestamp_ms": now_ms(),
+        "bridge_name": "manual_tcp_test_server",
+        "bridge_version": "manual-1.0",
+        "robot_id": "manual_test_robot",
+    }
+
+
+def make_capabilities(cameras):
+    return {
+        "type": "capabilities",
+        "protocol_version": 1,
+        "seq": 0,
+        "timestamp_ms": now_ms(),
+        "supports": [
+            "operator_input",
+            "heartbeat_ack",
+            "critical_ack",
+            "sync_request",
+            "camera_list_request",
+        ],
+        "max_frame_bytes": 1048576,
+        "cameras": [make_camera_info(cam_id, url) for cam_id, url in cameras],
+    }
+
+
+def make_system_snapshot(msg):
+    return {
+        "type": "system_snapshot",
+        "protocol_version": 1,
+        "seq": msg.get("seq", 0),
+        "timestamp_ms": now_ms(),
+        "control_mode": "vehicle",
+        "emergency": {"active": False, "source": ""},
+        "motor": {"initialized": True, "enabled": True},
+        "modules": {
+            "base": "online",
+            "arm": "online",
+            "camera": "online",
+        },
+        "last_error": {"code": 0, "message": ""},
+    }
+
+
+def make_camera_list_response(msg, cameras):
+    return {
+        "type": "camera_list_response",
+        "protocol_version": 1,
+        "seq": msg.get("seq", 0),
+        "timestamp_ms": now_ms(),
+        "cameras": [make_camera_info(cam_id, url) for cam_id, url in cameras],
+    }
+
+
 # ============================================
 # TCP 服务器
 # ============================================
@@ -222,6 +280,10 @@ def handle_client(conn, addr, cameras, args):
                                 msg,
                                 message=f"system command {msg.get('command', '')} accepted"
                             ))
+                        elif msg_type in ("sync_request", "system_snapshot_request"):
+                            send_json(conn, make_system_snapshot(msg))
+                        elif msg_type == "camera_list_request":
+                            send_json(conn, make_camera_list_response(msg, cameras))
                         else:
                             print(f"  [收到] {msg_type}: {str(msg)[:100]}")
         except (ConnectionResetError, ConnectionAbortedError):
@@ -256,6 +318,9 @@ def handle_client(conn, addr, cameras, args):
     loop_thread.start()
 
     try:
+        send_json(conn, make_hello())
+        send_json(conn, make_capabilities(cameras))
+
         # 初始数据
         print("\n--- 发送初始数据 ---")
         send_json(conn, make_motor_state())
