@@ -103,8 +103,12 @@ MVP 映射：
 
 当前落地文件：
 
-- `ros1_bridge/host_bridge_node.py`：bridge MVP，支持 `--dry-run` / `--ros`。
-- `scripts/bridge_loopback_test.py`：本机回环自动化测试。
+- `ros1_bridge/host_bridge_node.py`：bridge 启动入口，支持 `--dry-run` / `--ros` / `--debug-ui`。
+- `ros1_bridge/bridge_core.py`：协议解析、状态机、watchdog、响应生成。
+- `ros1_bridge/output_adapters.py`：dry-run 和 ROS 输出适配。
+- `ros1_bridge/debug_events.py`：调试事件 ring buffer。
+- `ros1_bridge/debug_ui.py`：只读 HTTP 调试 UI。
+- `scripts/bridge_loopback_test.py`：本机回环自动化测试，覆盖协议和调试 UI API。
 - `scripts/run_all_tests.sh`：默认运行 build smoke、protocol smoke 和 bridge loopback。
 
 ## 人工 GUI 回环测试
@@ -112,7 +116,7 @@ MVP 映射：
 1. 启动 bridge：
 
    ```bash
-   python3 ros1_bridge/host_bridge_node.py --dry-run --host 127.0.0.1 --port 9090
+   python3 ros1_bridge/host_bridge_node.py --dry-run --debug-ui --host 127.0.0.1 --port 9090
    ```
 
 2. 启动上位机 GUI。
@@ -125,6 +129,7 @@ MVP 映射：
 5. 按键触发 `operator_input`，观察 bridge 控制台输出速度意图。
 6. 点击急停，确认 UI 收到 ACK，bridge 进入急停状态。
 7. 断开并重连，确认上位机重新触发同步请求。
+8. 打开 `http://127.0.0.1:18080`，确认 Debug UI 能看到 state、camera list 和最近事件。
 
 ## 完成标准
 
@@ -133,3 +138,4 @@ MVP 映射：
 - `scripts/run_all_tests.sh` 默认包含 bridge loopback。
 - 上位机 GUI 能本机连接 dry-run bridge 并完成同步。
 - 急停、ACK、watchdog、安全零输出可以在 dry-run 下验证。
+- Debug UI 的 `/api/state` 和 `/api/events` 能忠实展示 Core 行为。
