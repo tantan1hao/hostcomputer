@@ -14,6 +14,8 @@
 
 set(COMMUNICATION_SOURCES
     SharedStructs.h
+    HostProtocol.cpp
+    HostProtocol.h
 
     # ROS1 TCP客户端
     ROS1TcpClient.cpp
