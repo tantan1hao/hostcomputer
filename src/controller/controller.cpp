@@ -151,6 +151,26 @@ bool Controller::sendEndEffectorControl(float x, float y, float z, float roll, f
     return m_tcpClient->sendEndEffectorControl(x, y, z, roll, pitch, yaw);
 }
 
+bool Controller::requestBridgeSync(const QString &reason)
+{
+    if (!m_tcpClient || !m_tcpClient->isConnected()) {
+        qWarning() << "TCP not connected, cannot request bridge sync";
+        return false;
+    }
+
+    return m_tcpClient->requestBridgeSync(reason);
+}
+
+bool Controller::requestCameraList()
+{
+    if (!m_tcpClient || !m_tcpClient->isConnected()) {
+        qWarning() << "TCP not connected, cannot request camera list";
+        return false;
+    }
+
+    return m_tcpClient->requestCameraList();
+}
+
 // ==================== TCP连接管理（供UI层对话框使用） ====================
 
 bool Controller::connectToROS(const QString &host, quint16 port)

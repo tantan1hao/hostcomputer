@@ -49,6 +49,8 @@ public:
     bool sendEmergencyStop(const QString &source);
     bool sendSystemCommand(const QString &command, const QJsonObject &params = QJsonObject());
     bool sendEndEffectorControl(float x, float y, float z, float roll, float pitch, float yaw);
+    bool requestBridgeSync(const QString &reason);
+    bool requestCameraList();
 
     // TCP连接管理（供UI层对话框使用）
     bool connectToROS(const QString &host, quint16 port);

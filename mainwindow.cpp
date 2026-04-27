@@ -1289,10 +1289,41 @@ void MainWindow::onProtocolMessageReceived(const QJsonObject &message)
         return;
     }
 
+    if (type == "hello") {
+        addCommand(QString("[Bridge] hello name=%1 version=%2 robot=%3")
+                   .arg(message["bridge_name"].toString("unknown"))
+                   .arg(message["bridge_version"].toString("unknown"))
+                   .arg(message["robot_id"].toString("unknown")));
+        return;
+    }
+
+    if (type == "capabilities") {
+        addCommand(QString("[Bridge] capabilities supports=%1 max_frame=%2")
+                   .arg(message["supports"].toArray().size())
+                   .arg(message["max_frame_bytes"].toVariant().toLongLong()));
+        return;
+    }
+
+    if (type == "sync_request_sent") {
+        addCommand(QString("[同步] request reason=%1 sync=%2 cameras=%3")
+                   .arg(message["reason"].toString("unknown"))
+                   .arg(message["sync_sent"].toBool(false) ? "sent" : "failed")
+                   .arg(message["camera_list_sent"].toBool(false) ? "sent" : "failed"));
+        return;
+    }
+
     if (type == "system_snapshot") {
-        addCommand(QString("[同步] system_snapshot seq=%1 mode=%2")
+        const QJsonObject emergency = message["emergency"].toObject();
+        const QJsonObject motor = message["motor"].toObject();
+        const QJsonObject lastError = message["last_error"].toObject();
+        addCommand(QString("[同步] system_snapshot seq=%1 mode=%2 emergency=%3 motor=%4/%5 last_error=%6:%7")
                    .arg(message["seq"].toVariant().toLongLong())
-                   .arg(message["control_mode"].toString("unknown")));
+                   .arg(message["control_mode"].toString("unknown"))
+                   .arg(emergency["active"].toBool(false) ? "active" : "clear")
+                   .arg(motor["initialized"].toBool(false) ? "init" : "not_init")
+                   .arg(motor["enabled"].toBool(false) ? "enabled" : "disabled")
+                   .arg(lastError["code"].toInt(0))
+                   .arg(lastError["message"].toString()));
         return;
     }
 

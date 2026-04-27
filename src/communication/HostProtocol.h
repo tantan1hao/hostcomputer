@@ -63,6 +63,11 @@ public:
                                          qint64 timestampMs = nowMs());
     static QJsonObject makeHeartbeat(quint64 seq,
                                      qint64 timestampMs = nowMs());
+    static QJsonObject makeSyncRequest(quint64 seq,
+                                       const QString &reason,
+                                       qint64 timestampMs = nowMs());
+    static QJsonObject makeCameraListRequest(quint64 seq,
+                                             qint64 timestampMs = nowMs());
     static QJsonObject makeCommand(const QString &type,
                                    quint64 seq,
                                    const QJsonObject &params = QJsonObject(),

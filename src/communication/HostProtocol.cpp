@@ -65,6 +65,18 @@ QJsonObject HostProtocol::makeHeartbeat(quint64 seq, qint64 timestampMs)
     return makeEnvelope(QStringLiteral("heartbeat"), seq, timestampMs);
 }
 
+QJsonObject HostProtocol::makeSyncRequest(quint64 seq, const QString &reason, qint64 timestampMs)
+{
+    QJsonObject params;
+    params[QStringLiteral("reason")] = reason;
+    return makeCommand(QStringLiteral("sync_request"), seq, params, timestampMs);
+}
+
+QJsonObject HostProtocol::makeCameraListRequest(quint64 seq, qint64 timestampMs)
+{
+    return makeEnvelope(QStringLiteral("camera_list_request"), seq, timestampMs);
+}
+
 QJsonObject HostProtocol::makeCommand(const QString &type,
                                       quint64 seq,
                                       const QJsonObject &params,

@@ -44,6 +44,8 @@ public:
     bool sendSystemCommand(const QString &command, const QJsonObject &params = QJsonObject());
     bool sendEndEffectorControl(float x, float y, float z, float roll, float pitch, float yaw);
     bool sendControlCommand(const Command &command);
+    bool requestBridgeSync(const QString &reason);
+    bool requestCameraList();
 
     // 状态查询
     QString getConnectionStatus() const;
@@ -129,6 +131,7 @@ private:
     bool validateCameraObject(const QJsonObject &camera, QString *errorMessage, int *errorCode) const;
     void processCameraInfoMessage(const QJsonObject &message);
     void processCameraListResponse(const QJsonObject &message);
+    void requestBridgeState(const QString &reason);
     void emitProtocolError(qint64 seq, int code, const QString &message);
     void closeForProtocolError(qint64 seq, int code, const QString &message);
     void trimExpiredHeartbeats(qint64 nowMs);

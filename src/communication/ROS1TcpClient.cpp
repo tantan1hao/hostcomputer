@@ -285,6 +285,26 @@ bool ROS1TcpClient::sendControlCommand(const Command &command)
     return sendMessage(msg);
 }
 
+bool ROS1TcpClient::requestBridgeSync(const QString &reason)
+{
+    if (!isConnected()) {
+        HANDLE_ERROR(Utils::ErrorCode::NetworkDisconnected, MODULE, "未连接到ROS，无法请求状态同步");
+        return false;
+    }
+
+    return sendMessage(HostProtocol::makeSyncRequest(nextSequence(), reason));
+}
+
+bool ROS1TcpClient::requestCameraList()
+{
+    if (!isConnected()) {
+        HANDLE_ERROR(Utils::ErrorCode::NetworkDisconnected, MODULE, "未连接到ROS，无法请求摄像头列表");
+        return false;
+    }
+
+    return sendMessage(HostProtocol::makeCameraListRequest(nextSequence()));
+}
+
 QString ROS1TcpClient::getConnectionStatus() const
 {
     if (isConnected()) {
@@ -387,6 +407,8 @@ void ROS1TcpClient::handleConnected()
 
     LOG_INFO(MODULE, QString("成功连接到ROS节点: %1").arg(getConnectionStatus()));
     emit connectedToROS();
+    requestBridgeState(m_stats.connectionCount > 1 ? QStringLiteral("reconnected")
+                                                   : QStringLiteral("connected"));
     emitStatsUpdate();
 }
 
@@ -944,6 +966,21 @@ void ROS1TcpClient::processCameraListResponse(const QJsonObject &message)
     for (const QJsonValue &cameraValue : cameras) {
         processCameraInfoMessage(cameraValue.toObject());
     }
+}
+
+void ROS1TcpClient::requestBridgeState(const QString &reason)
+{
+    const bool syncSent = requestBridgeSync(reason);
+    const bool cameraListSent = requestCameraList();
+
+    QJsonObject event;
+    event["type"] = "sync_request_sent";
+    event["protocol_version"] = HostProtocol::ProtocolVersion;
+    event["reason"] = reason;
+    event["sync_sent"] = syncSent;
+    event["camera_list_sent"] = cameraListSent;
+    event["timestamp_ms"] = HostProtocol::nowMs();
+    emit systemStatusReceived(event);
 }
 
 void ROS1TcpClient::emitProtocolError(qint64 seq, int code, const QString &message)
