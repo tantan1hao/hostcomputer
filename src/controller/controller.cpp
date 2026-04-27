@@ -111,16 +111,6 @@ bool Controller::sendControlCommand(const Communication::Command &command)
     return m_tcpClient->sendControlCommand(command);
 }
 
-bool Controller::sendVelocityCommand(float linearX, float linearY, float angularZ)
-{
-    if (!m_tcpClient || !m_tcpClient->isConnected()) {
-        qWarning() << "TCP not connected, cannot send velocity command";
-        return false;
-    }
-
-    return m_tcpClient->sendVelocityCommand(linearX, linearY, angularZ);
-}
-
 bool Controller::sendJointControl(int jointId, float position, float velocity)
 {
     if (!m_tcpClient || !m_tcpClient->isConnected()) {
@@ -131,14 +121,14 @@ bool Controller::sendJointControl(int jointId, float position, float velocity)
     return m_tcpClient->sendJointControl(jointId, position, velocity);
 }
 
-bool Controller::sendEmergencyStop()
+bool Controller::sendEmergencyStop(const QString &source)
 {
     if (!m_tcpClient || !m_tcpClient->isConnected()) {
         qWarning() << "TCP not connected, cannot send emergency stop";
         return false;
     }
 
-    return m_tcpClient->sendEmergencyStop();
+    return m_tcpClient->sendEmergencyStop(source);
 }
 
 bool Controller::sendSystemCommand(const QString &command, const QJsonObject &params)
@@ -237,6 +227,8 @@ void Controller::setupConnections()
                 this, &Controller::onTcpIMUDataReceived);
         connect(m_tcpClient, &Communication::ROS1TcpClient::cameraInfoReceived,
                 this, &Controller::onTcpCameraInfoReceived);
+        connect(m_tcpClient, &Communication::ROS1TcpClient::systemStatusReceived,
+                this, &Controller::onTcpSystemStatusReceived);
     }
 
     qDebug() << "Signal connections established";
@@ -280,6 +272,11 @@ void Controller::onTcpCameraInfoReceived(int cameraId, const QString &rtspUrl, b
                                          const QString &codec, int width, int height, int fps, int bitrate)
 {
     emit cameraInfoReceived(cameraId, online, codec, width, height, fps, bitrate, rtspUrl);
+}
+
+void Controller::onTcpSystemStatusReceived(const QJsonObject &status)
+{
+    emit protocolMessageReceived(status);
 }
 
 void Controller::handleError(const QString &error)

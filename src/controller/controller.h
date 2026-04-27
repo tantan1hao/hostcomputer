@@ -45,9 +45,8 @@ public:
     bool sendMotorCommand(const Communication::MotorState &state);
     bool sendOperatorInput(const Communication::OperatorInputState &inputState);
     bool sendControlCommand(const Communication::Command &command);
-    bool sendVelocityCommand(float linearX, float linearY, float angularZ);
     bool sendJointControl(int jointId, float position, float velocity);
-    bool sendEmergencyStop();
+    bool sendEmergencyStop(const QString &source);
     bool sendSystemCommand(const QString &command, const QJsonObject &params = QJsonObject());
     bool sendEndEffectorControl(float x, float y, float z, float roll, float pitch, float yaw);
 
@@ -83,6 +82,7 @@ signals:
     void cameraInfoReceived(int cameraId, bool online, const QString &codec,
                            int width, int height, int fps, int bitrate,
                            const QString &rtspUrl);
+    void protocolMessageReceived(const QJsonObject &message);
 
     // 系统状态信号
     void systemError(const QString &error);
@@ -99,6 +99,7 @@ private slots:
                               float accelX, float accelY, float accelZ);
     void onTcpCameraInfoReceived(int cameraId, const QString &rtspUrl, bool online,
                                  const QString &codec, int width, int height, int fps, int bitrate);
+    void onTcpSystemStatusReceived(const QJsonObject &status);
 
 private:
     // 内部辅助方法

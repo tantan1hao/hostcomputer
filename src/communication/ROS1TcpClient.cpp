@@ -181,26 +181,7 @@ bool ROS1TcpClient::sendJointControl(int jointId, float position, float velocity
     return sendMessage(command);
 }
 
-bool ROS1TcpClient::sendVelocityCommand(float linearX, float linearY, float angularZ)
-{
-    if (!isConnected()) {
-        HANDLE_ERROR(Utils::ErrorCode::NetworkDisconnected, MODULE, "未连接到ROS，无法发送速度命令");
-        return false;
-    }
-
-    Q_UNUSED(linearX)
-    Q_UNUSED(linearY)
-    Q_UNUSED(angularZ)
-
-    LOG_WARNING(MODULE, "sendVelocityCommand已弃用：高频控制不再下发cmd_vel，改为空operator_input快照");
-
-    OperatorInputState inputState;
-    inputState.mode = QStringLiteral("vehicle");
-    inputState.ttlMs = 300;
-    return sendOperatorInput(inputState);
-}
-
-bool ROS1TcpClient::sendEmergencyStop()
+bool ROS1TcpClient::sendEmergencyStop(const QString &source)
 {
     if (!isConnected()) {
         HANDLE_ERROR(Utils::ErrorCode::NetworkDisconnected, MODULE, "未连接到ROS，无法发送急停命令");
@@ -210,7 +191,7 @@ bool ROS1TcpClient::sendEmergencyStop()
     LOG_WARNING(MODULE, "发送急停命令");
 
     QJsonObject params;
-    params["source"] = QStringLiteral("upper_computer");
+    params["source"] = source.isEmpty() ? QStringLiteral("upper_computer") : source;
     return sendMessage(HostProtocol::makeCommand(QStringLiteral("emergency_stop"), nextSequence(), params));
 }
 
@@ -349,7 +330,7 @@ void ROS1TcpClient::slotSendJointControl(int jointId, float position, float velo
 
 void ROS1TcpClient::slotSendEmergencyStop()
 {
-    sendEmergencyStop();
+    sendEmergencyStop(QStringLiteral("slot"));
 }
 
 void ROS1TcpClient::slotSendSystemCommand(const QString &command, const QString &paramsJson)
@@ -538,7 +519,8 @@ void ROS1TcpClient::processReceivedData()
         } else if (msgType == "ack") {
             emit systemStatusReceived(msg);
         } else if (msgType == "system_snapshot" || msgType == "camera_list_response"
-                   || msgType == "param_response" || msgType == "emergency_state") {
+                   || msgType == "param_response" || msgType == "emergency_state"
+                   || msgType == "protocol_error") {
             emit systemStatusReceived(msg);
         } else if (msgType == "motor_state") {
             MotorState state = parseMotorState(msg);

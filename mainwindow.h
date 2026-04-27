@@ -83,10 +83,11 @@ private:
     void updateHeartbeatDisplay();
     void updateGamepadDisplay();
     void sendOperatorInputSnapshot();
+    void clearOperatorInputSnapshot();
     void formatAndAddCommand(const QString& command);
     void formatAndAddError(const QString& error);
     QString getCurrentTimestamp() const;
-    void triggerEmergencyStop();
+    void triggerEmergencyStop(const QString &source);
 
     // 模式切换
     void switchControlMode(ControlMode mode);
@@ -103,6 +104,7 @@ private slots:
     void onCameraInfoReceived(int cameraId, bool online, const QString &codec,
                               int width, int height, int fps, int bitrate,
                               const QString &rtspUrl);
+    void onProtocolMessageReceived(const QJsonObject &message);
 
     // 手柄信号处理
     void onGamepadStateReceived(const ControllerState &state);

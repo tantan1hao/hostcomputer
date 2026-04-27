@@ -39,8 +39,7 @@ public:
     bool sendMotorCommand(const MotorState &motorState);
     bool sendOperatorInput(const OperatorInputState &inputState);
     bool sendJointControl(int jointId, float position, float velocity = 0.0f);
-    bool sendVelocityCommand(float linearX, float linearY, float angularZ);
-    bool sendEmergencyStop();
+    bool sendEmergencyStop(const QString &source);
     bool sendSystemCommand(const QString &command, const QJsonObject &params = QJsonObject());
     bool sendEndEffectorControl(float x, float y, float z, float roll, float pitch, float yaw);
     bool sendControlCommand(const Command &command);

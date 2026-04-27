@@ -28,6 +28,7 @@
 #include <QGroupBox>
 #include <QTextEdit>
 #include <QThread>
+#include <QJsonArray>
 #ifdef Q_OS_WIN
 #include <windows.h>
 #include <shellapi.h>
@@ -119,7 +120,7 @@ MainWindow::MainWindow(QWidget *parent)
     QShortcut *spaceStop = new QShortcut(QKeySequence(Qt::Key_Space), this);
     spaceStop->setContext(Qt::ApplicationShortcut);
     connect(spaceStop, &QShortcut::activated, this, [this]() {
-        triggerEmergencyStop();
+        triggerEmergencyStop(QStringLiteral("keyboard_space"));
     });
 
     // 设置连接和状态栏
@@ -167,6 +168,7 @@ void MainWindow::setupController()
     connect(m_controller, &Controller::co2DataReceived, this, &MainWindow::onCO2DataReceived);
     connect(m_controller, &Controller::imuDataReceived, this, &MainWindow::onIMUDataReceived);
     connect(m_controller, &Controller::cameraInfoReceived, this, &MainWindow::onCameraInfoReceived);
+    connect(m_controller, &Controller::protocolMessageReceived, this, &MainWindow::onProtocolMessageReceived);
 
     // 系统错误
     connect(m_controller, &Controller::systemError, this, [this](const QString &error) {
@@ -186,7 +188,9 @@ void MainWindow::setupDisplayLayout()
     connect(m_controlPanel, &ControlPanelWidget::gamepadConnectRequested,
             this, &MainWindow::on_btn_gamepad_connect_clicked);
     connect(m_controlPanel, &ControlPanelWidget::emergencyStopRequested,
-            this, &MainWindow::triggerEmergencyStop);
+            this, [this]() {
+        triggerEmergencyStop(QStringLiteral("control_panel"));
+    });
     ui->horizontalLayout_model_gamepad->addWidget(m_controlPanel);
 
     ui->group_cameras->layout()->addWidget(m_cameraGridWidget);
@@ -231,7 +235,9 @@ void MainWindow::setupKeyboardController()
         sendOperatorInputSnapshot();
     });
     connect(m_keyboardController, &KeyboardController::emergencyStopRequested,
-            this, &MainWindow::on_btn_emergency_stop_clicked);
+            this, [this]() {
+        triggerEmergencyStop(QStringLiteral("keyboard_space"));
+    });
 
     // 默认启用键盘控制
     m_keyboardController->setEnabled(true);
@@ -460,7 +466,7 @@ void MainWindow::closeEvent(QCloseEvent *event)
 void MainWindow::keyPressEvent(QKeyEvent *event)
 {
     if (!event->isAutoRepeat() && event->key() == Qt::Key_Space) {
-        triggerEmergencyStop();
+        triggerEmergencyStop(QStringLiteral("keyboard_space"));
         event->accept();
         return;
     }
@@ -607,29 +613,41 @@ void MainWindow::on_btn_clear_errors_clicked()
 
 void MainWindow::on_btn_emergency_stop_clicked()
 {
-    const bool restoreKeyboardControl = m_keyboardController && m_keyboardController->isEnabled();
+    triggerEmergencyStop(QStringLiteral("button"));
+}
+
+void MainWindow::clearOperatorInputSnapshot()
+{
+    m_keyboardPressedKeys.clear();
+    m_latestGamepadState = {};
+}
+
+void MainWindow::triggerEmergencyStop(const QString &source)
+{
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (now - m_lastEmergencyStopMs < 150) {
+        return;
+    }
+
+    m_lastEmergencyStopMs = now;
+
     // === 最高优先级急停处理 ===
-    addCommand("[急停] ⚠️ 用户触发急停按钮!");
+    addCommand(QString("[急停] 用户触发急停 source=%1").arg(source));
 
     // 1. 立即停止所有运动（TCP通道）
     if (m_controller && m_controller->isTcpConnected()) {
-        m_controller->sendEmergencyStop();
+        m_controller->sendEmergencyStop(source);
         addCommand("[急停] TCP急停指令已发送");
     }
 
-    // 2. 清空键盘控制器状态
+    // 2. 清空输入快照，确保急停后不会继续发送旧输入意图
+    clearOperatorInputSnapshot();
     if (m_keyboardController) {
-        m_keyboardController->setEnabled(false);
-        m_keyboardController->setEnabled(true);  // 重置状态
+        m_keyboardController->clearPressedKeys();
         addCommand("[急停] 键盘控制器已重置");
     }
 
     // 3. 切换回车体模式（安全模式）
-    if (m_keyboardController && !restoreKeyboardControl) {
-        m_keyboardController->setEnabled(false);
-        addCommand("[Emergency Stop] Keyboard control kept disabled");
-    }
-
     if (m_controlMode != ControlMode::Vehicle) {
         switchControlMode(ControlMode::Vehicle);
         addCommand("[急停] 已切换回车体模式");
@@ -797,18 +815,6 @@ QString MainWindow::getCurrentTimestamp() const
 {
     return QDateTime::currentDateTime().toString("hh:mm:ss");
 }
-
-void MainWindow::triggerEmergencyStop()
-{
-    const qint64 now = QDateTime::currentMSecsSinceEpoch();
-    if (now - m_lastEmergencyStopMs < 150) {
-        return;
-    }
-
-    m_lastEmergencyStopMs = now;
-    on_btn_emergency_stop_clicked();
-}
-
 
 void MainWindow::showTcpConnectionDialog()
 {
@@ -1191,6 +1197,84 @@ void MainWindow::onCameraInfoReceived(int cameraId, bool online, const QString &
     }
 }
 
+void MainWindow::onProtocolMessageReceived(const QJsonObject &message)
+{
+    const QString type = message["type"].toString();
+
+    if (type == "ack") {
+        const QString ackType = message["ack_type"].toString("unknown");
+        const qint64 seq = message["seq"].toVariant().toLongLong();
+        const bool ok = message["ok"].toBool(false);
+        const int code = message["code"].toInt(-1);
+        const QString text = message["message"].toString();
+        const QString line = QString("[ACK] %1 seq=%2 %3 code=%4 %5")
+                                 .arg(ackType)
+                                 .arg(seq)
+                                 .arg(ok ? "OK" : "FAIL")
+                                 .arg(code)
+                                 .arg(text);
+        if (ok) {
+            addCommand(line);
+        } else {
+            addError(line);
+        }
+        return;
+    }
+
+    if (type == "emergency_state") {
+        const bool active = message["active"].toBool(false);
+        const QString source = message["source"].toString();
+        const QString text = message["message"].toString();
+        const QString line = QString("[急停状态] %1 source=%2 %3")
+                                 .arg(active ? "ACTIVE" : "CLEAR")
+                                 .arg(source)
+                                 .arg(text);
+        if (active) {
+            addError(line);
+        } else {
+            addCommand(line);
+        }
+        return;
+    }
+
+    if (type == "system_snapshot") {
+        addCommand(QString("[同步] system_snapshot seq=%1 mode=%2")
+                   .arg(message["seq"].toVariant().toLongLong())
+                   .arg(message["control_mode"].toString("unknown")));
+        return;
+    }
+
+    if (type == "camera_list_response") {
+        addCommand(QString("[同步] camera_list_response seq=%1 cameras=%2")
+                   .arg(message["seq"].toVariant().toLongLong())
+                   .arg(message["cameras"].toArray().size()));
+        return;
+    }
+
+    if (type == "param_response") {
+        addCommand(QString("[参数] %1=%2")
+                   .arg(message["name"].toString("unknown"))
+                   .arg(message["value"].toVariant().toString()));
+        return;
+    }
+
+    if (type == "protocol_error") {
+        addError(QString("[协议错误] seq=%1 code=%2 %3")
+                 .arg(message["seq"].toVariant().toLongLong())
+                 .arg(message["code"].toInt(-1))
+                 .arg(message["message"].toString()));
+        return;
+    }
+
+    if (type == "system_status") {
+        if (message.contains("last_operator_input_seq")) {
+            return;
+        }
+        addCommand(QString("[状态] system_status seq=%1")
+                   .arg(message["seq"].toVariant().toLongLong()));
+    }
+}
+
 void MainWindow::onGamepadStateReceived(const ControllerState &state)
 {
     m_latestGamepadState = state;
@@ -1234,7 +1318,8 @@ void MainWindow::onGamepadStateReceived(const ControllerState &state)
 
     if (state.buttonA) {
         addCommand("[手柄] 急停!");
-        triggerEmergencyStop();
+        triggerEmergencyStop(QStringLiteral("gamepad_a"));
+        return;
     }
 
     sendOperatorInputSnapshot();

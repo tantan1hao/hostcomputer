@@ -90,10 +90,13 @@ def client_worker(conn, addr):
                     send_json(conn, make_ack(msg))
                 elif mtype == "system_command":
                     send_json(conn, make_ack(msg, message=f"system command {msg.get('command', '')} accepted"))
-                elif mtype == "cmd_vel":
+                else:
                     send_json(conn, {
-                        "type": "system_status",
-                        "ack": "legacy_cmd_vel",
+                        "type": "protocol_error",
+                        "protocol_version": 1,
+                        "seq": msg.get("seq", 0),
+                        "code": 1001,
+                        "message": f"unsupported message type: {mtype}",
                         "timestamp_ms": now_ms(),
                     })
     finally:
