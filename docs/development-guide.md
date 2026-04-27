@@ -315,26 +315,40 @@ private:
 ```
 hostcomputer/
 ├── src/
-│   ├── controller/      # 业务逻辑层
-│   │   ├── motorcontroller.h
-│   │   └── motorcontroller.cpp
-│   ├── communication/   # 通信层
-│   │   ├── canmanager.h
-│   │   └── canmanager.cpp
-│   ├── parser/          # 协议解析层
-│   │   ├── parser.h
-│   │   ├── parser.cpp
-│   │   └── motorstate.h
-│   └── model/           # 数据模型层
-│       ├── motormodel.h
-│       └── motormodel.cpp
-├── resources/           # 资源文件
-├── build/              # 构建输出
+│   ├── communication/   # TCP/JSON 通信层
+│   │   ├── ROS1TcpClient.h/.cpp
+│   │   └── SharedStructs.h
+│   ├── controller/      # 业务逻辑和可复用 UI 组件
+│   │   ├── controller.h/.cpp
+│   │   ├── CameraGridWidget.h/.cpp
+│   │   ├── ControlPanelWidget.h/.cpp
+│   │   ├── TelemetryPanelWidget.h/.cpp
+│   │   ├── RobotAttitudeWidget.h/.cpp
+│   │   ├── RtspPlayerWidget.h/.cpp
+│   │   ├── KeyboardController.h/.cpp
+│   │   └── handlekey.h/.cpp
+│   └── utils/           # 日志和错误处理
+│       ├── Logger.h/.cpp
+│       └── ErrorHandler.h/.cpp
+├── resources/           # 图标、QRC、QML资源
+├── scripts/             # 构建冒烟和联调辅助脚本
 ├── CMakeLists.txt      # 主CMake配置
 ├── main.cpp           # 程序入口
 ├── mainwindow.h/.cpp  # 主窗口
 └── mainwindow.ui      # UI设计文件
 ```
+
+## 当前 UI 组件架构
+
+主窗口仍由 `mainwindow.ui` 提供基础容器、菜单和日志区域，但主要功能区已经拆成代码化 Widget：
+
+- `CameraGridWidget`：管理 2x3 摄像头网格，其中 5 格为 RTSP 视频，1 格承载辅助状态面板。
+- `TelemetryPanelWidget`：显示连接、心跳、FPS、带宽、模式、手柄、错误数和 CO2。
+- `ControlPanelWidget`：显示手柄状态/映射，并发出手柄连接和急停请求。
+- `RobotAttitudeWidget`：封装 `QQuickWidget + RobotViewModel`，负责 QML 3D 姿态视图。
+- `MainWindow`：负责组件组装、信号转发、菜单动作、TCP 连接对话框和高层控制决策。
+
+大改 UI 时优先改这些独立 Widget。不要把新面板继续堆回 `mainwindow.cpp`，除非它只是组件装配或信号连接。
 
 ## 开发示例
 
@@ -439,13 +453,12 @@ enum class MotorStatus {
 
 ## 注意事项
 
-- 项目当前处于架构设计完成阶段，业务逻辑实现尚未开始
-- 所有src/子目录下的源文件(.h/.cpp)都已创建但内容为空
 - 开发时需要遵循Qt6的API规范，注意与Qt5的差异
 - 作为工业级应用，需重点关注错误处理和异常安全性
 - 严格遵守分层架构，避免跨层调用
 - 使用Qt的信号槽机制实现组件间的松耦合
 - 优先考虑实时性和性能要求
+- 构建产物、Qt Creator 用户文件、日志和 `build-*` 目录不应提交到版本库
 
 ## 常见问题
 
