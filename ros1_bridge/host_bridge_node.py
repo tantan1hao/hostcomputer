@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from bridge_core import BridgeCore, BridgeRuntime
 from bridge_protocol import DEFAULT_WATCHDOG_MS, MAX_FRAME_BYTES, PROTOCOL_VERSION
 from bridge_protocol import json_line
+from debug_ui import DebugHttpServer
 from debug_events import EventSink, RingBufferEventSink
 from output_adapters import DryRunOutput, OutputAdapter, RosOutput
 
@@ -170,6 +171,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--watchdog-ms", type=int, default=DEFAULT_WATCHDOG_MS)
     parser.add_argument("--linear-speed", type=float, default=0.6)
     parser.add_argument("--angular-speed", type=float, default=1.0)
+    parser.add_argument("--debug-ui", action="store_true", help="start read-only debug HTTP UI")
+    parser.add_argument("--debug-host", default="127.0.0.1")
+    parser.add_argument("--debug-port", type=int, default=18080)
     parser.add_argument(
         "--camera",
         action="append",
@@ -197,6 +201,8 @@ def main() -> None:
         cameras=args.camera,
         events=events,
     )
+    if args.debug_ui:
+        DebugHttpServer(args.debug_host, args.debug_port, server.core, events).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:

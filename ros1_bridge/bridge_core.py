@@ -113,6 +113,14 @@ class BridgeCore:
             "cameras": self.cameras,
         }
 
+    def state_snapshot(self) -> Dict[str, Any]:
+        with self.state_lock:
+            state = self.state.to_dict()
+        state["cameras"] = self.cameras
+        state["watchdog_ms"] = self.watchdog_ms
+        state["max_frame_bytes"] = MAX_FRAME_BYTES
+        return state
+
     def make_ack(self, msg: Dict[str, Any], ok: bool = True, code: int = 0, message: str = "ok") -> Dict[str, Any]:
         return {
             "type": "ack",
