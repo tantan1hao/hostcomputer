@@ -7,6 +7,7 @@
 #include <QByteArray>
 #include <QJsonObject>
 #include <memory>
+#include "HostProtocol.h"
 #include "SharedStructs.h"
 
 namespace Communication {
@@ -42,6 +43,7 @@ public:
 
     // 命令发送接口
     bool sendMotorCommand(const Communication::MotorState &state);
+    bool sendOperatorInput(const Communication::OperatorInputState &inputState);
     bool sendControlCommand(const Communication::Command &command);
     bool sendVelocityCommand(float linearX, float linearY, float angularZ);
     bool sendJointControl(int jointId, float position, float velocity);

@@ -18,6 +18,7 @@ ROS1TcpClient::ROS1TcpClient(QObject *parent)
     , m_heartbeatOnline(false)
     , m_reconnectAttempts(0)
     , m_lastMessageReceivedMs(0)
+    , m_nextSequence(0)
     , m_heartbeatTimer(new QTimer(this))
     , m_reconnectTimer(new QTimer(this))
 {
@@ -125,6 +126,9 @@ bool ROS1TcpClient::sendMotorCommand(const MotorState &motorState)
 
     QJsonObject command;
     command["type"] = "motor_command";
+    command["protocol_version"] = HostProtocol::ProtocolVersion;
+    command["seq"] = static_cast<qint64>(nextSequence());
+    command["timestamp_ms"] = HostProtocol::nowMs();
 
     // 添加6关节数据
     QJsonArray jointsArray;
@@ -145,6 +149,16 @@ bool ROS1TcpClient::sendMotorCommand(const MotorState &motorState)
     return sendMessage(command);
 }
 
+bool ROS1TcpClient::sendOperatorInput(const OperatorInputState &inputState)
+{
+    if (!isConnected()) {
+        HANDLE_ERROR(Utils::ErrorCode::NetworkDisconnected, MODULE, "未连接到ROS，无法发送操作者输入状态");
+        return false;
+    }
+
+    return sendMessage(HostProtocol::makeOperatorInput(inputState, nextSequence()));
+}
+
 bool ROS1TcpClient::sendJointControl(int jointId, float position, float velocity)
 {
     if (!isConnected()) {
@@ -158,12 +172,10 @@ bool ROS1TcpClient::sendJointControl(int jointId, float position, float velocity
         return false;
     }
 
-    QJsonObject command;
-    command["type"] = "joint_control";
+    QJsonObject command = HostProtocol::makeCommand(QStringLiteral("joint_control"), nextSequence());
     command["joint_id"] = jointId;
     command["position"] = position;
     command["velocity"] = velocity;
-    command["timestamp"] = QDateTime::currentMSecsSinceEpoch();
 
     return sendMessage(command);
 }
@@ -175,14 +187,16 @@ bool ROS1TcpClient::sendVelocityCommand(float linearX, float linearY, float angu
         return false;
     }
 
-    QJsonObject command;
-    command["type"] = "cmd_vel";
-    command["linear_x"] = linearX;
-    command["linear_y"] = linearY;
-    command["angular_z"] = angularZ;
-    command["timestamp"] = QDateTime::currentMSecsSinceEpoch();
+    Q_UNUSED(linearX)
+    Q_UNUSED(linearY)
+    Q_UNUSED(angularZ)
 
-    return sendMessage(command);
+    LOG_WARNING(MODULE, "sendVelocityCommand已弃用：高频控制不再下发cmd_vel，改为空operator_input快照");
+
+    OperatorInputState inputState;
+    inputState.mode = QStringLiteral("vehicle");
+    inputState.ttlMs = 300;
+    return sendOperatorInput(inputState);
 }
 
 bool ROS1TcpClient::sendEmergencyStop()
@@ -194,11 +208,9 @@ bool ROS1TcpClient::sendEmergencyStop()
 
     LOG_WARNING(MODULE, "发送急停命令");
 
-    QJsonObject command;
-    command["type"] = "emergency_stop";
-    command["timestamp"] = QDateTime::currentMSecsSinceEpoch();
-
-    return sendMessage(command);
+    QJsonObject params;
+    params["source"] = QStringLiteral("upper_computer");
+    return sendMessage(HostProtocol::makeCommand(QStringLiteral("emergency_stop"), nextSequence(), params));
 }
 
 bool ROS1TcpClient::sendSystemCommand(const QString &command, const QJsonObject &params)
@@ -208,11 +220,9 @@ bool ROS1TcpClient::sendSystemCommand(const QString &command, const QJsonObject 
         return false;
     }
 
-    QJsonObject msg;
-    msg["type"] = "system_command";
+    QJsonObject msg = HostProtocol::makeCommand(QStringLiteral("system_command"), nextSequence());
     msg["command"] = command;
     msg["params"] = params;
-    msg["timestamp"] = QDateTime::currentMSecsSinceEpoch();
 
     LOG_INFO(MODULE, QString("发送系统命令: %1").arg(command));
 
@@ -226,15 +236,13 @@ bool ROS1TcpClient::sendEndEffectorControl(float x, float y, float z, float roll
         return false;
     }
 
-    QJsonObject command;
-    command["type"] = "cartesian_control";
+    QJsonObject command = HostProtocol::makeCommand(QStringLiteral("cartesian_control"), nextSequence());
     command["x"] = x;
     command["y"] = y;
     command["z"] = z;
     command["roll"] = roll;
     command["pitch"] = pitch;
     command["yaw"] = yaw;
-    command["timestamp"] = QDateTime::currentMSecsSinceEpoch();
 
     return sendMessage(command);
 }
@@ -246,9 +254,7 @@ bool ROS1TcpClient::sendControlCommand(const Command &command)
         return false;
     }
 
-    QJsonObject msg;
-    msg["type"] = "control_command";
-    msg["timestamp"] = QDateTime::currentMSecsSinceEpoch();
+    QJsonObject msg = HostProtocol::makeCommand(QStringLiteral("control_command"), nextSequence());
 
     // IMU数据
     QJsonObject imuData;
@@ -449,10 +455,7 @@ void ROS1TcpClient::checkConnection()
         }
 
         // 发送心跳包
-        QJsonObject heartbeat;
-        heartbeat["type"] = "heartbeat";
-        heartbeat["timestamp"] = QDateTime::currentMSecsSinceEpoch();
-        sendMessage(heartbeat);
+        sendMessage(HostProtocol::makeHeartbeat(nextSequence()));
     }
 }
 
@@ -479,6 +482,15 @@ bool ROS1TcpClient::sendMessage(const QJsonObject &message)
     emitStatsUpdate();
 
     return flushed;
+}
+
+quint64 ROS1TcpClient::nextSequence()
+{
+    ++m_nextSequence;
+    if (m_nextSequence == 0) {
+        m_nextSequence = 1;
+    }
+    return m_nextSequence;
 }
 
 void ROS1TcpClient::processReceivedData()

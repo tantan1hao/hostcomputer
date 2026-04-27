@@ -8,6 +8,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QByteArray>
+#include "HostProtocol.h"
 #include "SharedStructs.h"
 #include "Logger.h"
 #include "ErrorHandler.h"
@@ -36,6 +37,7 @@ public:
 
     // 数据发送（线程安全）
     bool sendMotorCommand(const MotorState &motorState);
+    bool sendOperatorInput(const OperatorInputState &inputState);
     bool sendJointControl(int jointId, float position, float velocity = 0.0f);
     bool sendVelocityCommand(float linearX, float linearY, float angularZ);
     bool sendEmergencyStop();
@@ -100,6 +102,7 @@ private slots:
 private:
     void setupConnection();
     bool sendMessage(const QJsonObject &message);
+    quint64 nextSequence();
     void processReceivedData();
     MotorState parseMotorState(const QJsonObject &json);
     void setHeartbeatOnline(bool online);
@@ -118,6 +121,7 @@ private:
     bool m_heartbeatOnline;
     int m_reconnectAttempts;
     qint64 m_lastMessageReceivedMs;
+    quint64 m_nextSequence;
 
     // 统计信息
     Stats m_stats;

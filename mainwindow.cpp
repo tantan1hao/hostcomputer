@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "./ui_mainwindow.h"
+#include "src/communication/HostProtocol.h"
 #include "src/communication/SharedStructs.h"
 #include <QtGlobal>
 #include <QSpinBox>
@@ -31,6 +32,55 @@
 #include <windows.h>
 #include <shellapi.h>
 #endif
+
+namespace {
+
+double normalizeStickAxis(int16_t value)
+{
+    return qBound(-1.0, static_cast<double>(value) / 32767.0, 1.0);
+}
+
+double normalizeTriggerAxis(uint8_t value)
+{
+    return qBound(0.0, static_cast<double>(value) / 255.0, 1.0);
+}
+
+Communication::GamepadInputState makeGamepadInputState(const ControllerState &state, bool connected)
+{
+    Communication::GamepadInputState gamepad;
+    gamepad.connected = connected;
+
+    gamepad.buttons.a = state.buttonA;
+    gamepad.buttons.b = state.buttonB;
+    gamepad.buttons.x = state.buttonX;
+    gamepad.buttons.y = state.buttonY;
+    gamepad.buttons.start = state.buttonStart;
+    gamepad.buttons.back = state.buttonBack;
+    gamepad.buttons.lb = state.leftShoulder;
+    gamepad.buttons.rb = state.rightShoulder;
+    gamepad.buttons.l3 = state.leftThumb;
+    gamepad.buttons.r3 = state.rightThumb;
+    gamepad.buttons.dpadUp = state.dpadUp;
+    gamepad.buttons.dpadDown = state.dpadDown;
+    gamepad.buttons.dpadLeft = state.dpadLeft;
+    gamepad.buttons.dpadRight = state.dpadRight;
+
+    gamepad.axes.leftX = connected ? normalizeStickAxis(state.sThumbLX) : 0.0;
+    gamepad.axes.leftY = connected ? normalizeStickAxis(state.sThumbLY) : 0.0;
+    gamepad.axes.rightX = connected ? normalizeStickAxis(state.sThumbRX) : 0.0;
+    gamepad.axes.rightY = connected ? normalizeStickAxis(state.sThumbRY) : 0.0;
+    gamepad.axes.lt = connected ? normalizeTriggerAxis(state.bLeftTrigger) : 0.0;
+    gamepad.axes.rt = connected ? normalizeTriggerAxis(state.bRightTrigger) : 0.0;
+
+    return gamepad;
+}
+
+QString modeNameForProtocol(ControlMode mode)
+{
+    return mode == ControlMode::Arm ? QStringLiteral("arm") : QStringLiteral("vehicle");
+}
+
+} // namespace
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -160,57 +210,28 @@ void MainWindow::setupDisplayLayout()
 void MainWindow::setupKeyboardController()
 {
     m_keyboardController = new KeyboardController(this);
-    connect(m_keyboardController, &KeyboardController::velocityChanged,
-            this, [this](float lx, float ly, float az) {
-        // 时间节流：500ms内最多打一次日志
-        static float lastLx = 0.0f, lastAz = 0.0f;
+    connect(m_keyboardController, &KeyboardController::operatorInputChanged,
+            this, [this](const QStringList &pressedKeys) {
         static qint64 lastLogTime = 0;
-        bool changed = (lx != lastLx || az != lastAz);
+        const bool changed = (pressedKeys != m_keyboardPressedKeys);
+        m_keyboardPressedKeys = pressedKeys;
+
         if (changed) {
-            lastLx = lx;
-            lastAz = az;
             qint64 now = QDateTime::currentMSecsSinceEpoch();
             if (now - lastLogTime >= 500) {
                 lastLogTime = now;
-                bool isStopped = (lx == 0.0f && az == 0.0f);
-                if (!isStopped) {
-                    QString dir;
-                    if (lx > 0) dir += "前进 ";
-                    if (lx < 0) dir += "后退 ";
-                    if (az > 0) dir += "左转 ";
-                    if (az < 0) dir += "右转 ";
-                    addCommand(QString("[键盘] %1 (lx=%.2f az=%.2f)").arg(dir.trimmed()).arg(lx).arg(az));
+                if (!pressedKeys.isEmpty()) {
+                    addCommand(QString("[键盘] 按下: %1").arg(pressedKeys.join(",")));
                 } else {
                     addCommand("[键盘] 停止");
                 }
             }
         }
 
-        if (m_controller && m_controller->isTcpConnected()) {
-            m_controller->sendVelocityCommand(lx, ly, az);
-        }
+        sendOperatorInputSnapshot();
     });
     connect(m_keyboardController, &KeyboardController::emergencyStopRequested,
             this, &MainWindow::on_btn_emergency_stop_clicked);
-
-    // 键盘机械臂模式信号
-    connect(m_keyboardController, &KeyboardController::jointControlRequested,
-            this, [this](int jointId, float position, float velocity) {
-        if (m_controller && m_controller->isTcpConnected()) {
-            m_controller->sendJointControl(jointId, position, velocity);
-            addCommand(QString("[键盘-机械臂] 关节%1 位置:%2 速度:%3")
-                       .arg(jointId).arg(position, 0, 'f', 3).arg(velocity, 0, 'f', 3));
-        }
-    });
-    connect(m_keyboardController, &KeyboardController::executorControlRequested,
-            this, [this](float value) {
-        if (m_controller && m_controller->isTcpConnected()) {
-            QJsonObject params;
-            params["value"] = value;
-            m_controller->sendSystemCommand("executor_control", params);
-            addCommand(QString("[键盘-机械臂] 执行器: %1").arg(value > 0 ? "张开" : "闭合"));
-        }
-    });
 
     // 默认启用键盘控制
     m_keyboardController->setEnabled(true);
@@ -226,22 +247,17 @@ void MainWindow::setupHandleKey()
             this, &MainWindow::onGamepadStateReceived);
     connect(m_handleKey, &HandleKey::connectionChanged,
             this, [this](bool connected) {
+        m_gamepadConnected = connected;
+        if (!connected) {
+            m_latestGamepadState = {};
+        }
         updateGamepadDisplay();
         if (connected) {
             addCommand("[手柄] 手柄已连接");
-            // 手柄连接后禁用键盘控制（急停除外）
-            if (m_keyboardController) {
-                m_keyboardController->setEnabled(false);
-                addCommand("[键盘] 键盘控制已禁用（急停仍可用）");
-            }
         } else {
             addCommand("[手柄] 手柄已断开");
-            // 手柄断开后恢复键盘控制
-            if (m_keyboardController) {
-                m_keyboardController->setEnabled(true);
-                addCommand("[键盘] 键盘控制已恢复");
-            }
         }
+        sendOperatorInputSnapshot();
     });
 }
 
@@ -598,7 +614,6 @@ void MainWindow::on_btn_emergency_stop_clicked()
     // 1. 立即停止所有运动（TCP通道）
     if (m_controller && m_controller->isTcpConnected()) {
         m_controller->sendEmergencyStop();
-        m_controller->sendVelocityCommand(0.0f, 0.0f, 0.0f);
         addCommand("[急停] TCP急停指令已发送");
     }
 
@@ -619,6 +634,8 @@ void MainWindow::on_btn_emergency_stop_clicked()
         switchControlMode(ControlMode::Vehicle);
         addCommand("[急停] 已切换回车体模式");
     }
+
+    sendOperatorInputSnapshot();
 
     // 4. 状态栏提示
     statusBar()->showMessage("⚠️ 急停已触发！所有运动已停止", 5000);
@@ -710,6 +727,21 @@ void MainWindow::updateGamepadDisplay()
     if (m_telemetryPanel) {
         m_telemetryPanel->setGamepadConnected(connected);
     }
+}
+
+void MainWindow::sendOperatorInputSnapshot()
+{
+    if (!m_controller || !m_controller->isTcpConnected()) {
+        return;
+    }
+
+    Communication::OperatorInputState inputState;
+    inputState.mode = modeNameForProtocol(m_controlMode);
+    inputState.ttlMs = 300;
+    inputState.keyboard.pressedKeys = m_keyboardPressedKeys;
+    inputState.gamepad = makeGamepadInputState(m_latestGamepadState, m_gamepadConnected);
+
+    m_controller->sendOperatorInput(inputState);
 }
 
 void MainWindow::formatAndAddCommand(const QString& command)
@@ -1102,6 +1134,7 @@ void MainWindow::onTcpConnected()
 {
     updateConnectionStatus(true);
     addCommand("[TCP] 已连接到ROS节点");
+    sendOperatorInputSnapshot();
     if (m_controller) {
         statusBar()->showMessage(QString("TCP已连接: %1:%2")
             .arg(m_controller->getROSHost()).arg(m_controller->getROSPort()));
@@ -1160,6 +1193,9 @@ void MainWindow::onCameraInfoReceived(int cameraId, bool online, const QString &
 
 void MainWindow::onGamepadStateReceived(const ControllerState &state)
 {
+    m_latestGamepadState = state;
+    m_gamepadConnected = true;
+
     // === 1. 更新 GamepadDisplayWidget 显示 ===
     if (m_controlPanel) {
         // 摇杆归一化到 -1.0 ~ 1.0
@@ -1188,22 +1224,20 @@ void MainWindow::onGamepadStateReceived(const ControllerState &state)
         else m_controlPanel->updateGamepadButton("--", false);
     }
 
-    // === 2. D-Pad检测模式切换 ===
+    // === 2. D-Pad检测模式切换（模式仍由上位机UI展示，输入含完整D-Pad状态） ===
     if (state.dpadUp) {
         switchControlMode(ControlMode::Vehicle);
-        return;
     }
     if (state.dpadDown) {
         switchControlMode(ControlMode::Arm);
-        return;
     }
 
-    // === 3. 根据当前模式分发控制逻辑 ===
-    if (m_controlMode == ControlMode::Arm) {
-        handleGamepadArmMode(state);
-    } else {
-        handleGamepadVehicleMode(state);
+    if (state.buttonA) {
+        addCommand("[手柄] 急停!");
+        triggerEmergencyStop();
     }
+
+    sendOperatorInputSnapshot();
 }
 
 void MainWindow::switchControlMode(ControlMode mode)
@@ -1226,161 +1260,5 @@ void MainWindow::switchControlMode(ControlMode mode)
         m_keyboardController->setControlMode(static_cast<int>(mode));
     }
 
-    // 切换到机械臂模式时，发送零速度确保车体停止
-    if (mode == ControlMode::Arm) {
-        if (m_controller && m_controller->isTcpConnected()) {
-            m_controller->sendVelocityCommand(0.0f, 0.0f, 0.0f);
-        }
-    }
-}
-
-void MainWindow::handleGamepadVehicleMode(const ControllerState &state)
-{
-    // 左摇杆Y轴 → 前后线速度 (linearX)
-    // 右摇杆X轴 → 左右角速度 (angularZ)
-    const int16_t DEADZONE = 3000;
-    const float MAX_LINEAR_SPEED = 0.5f;
-    const float MAX_ANGULAR_SPEED = 1.0f;
-
-    float linearX = 0.0f;
-    float angularZ = 0.0f;
-
-    if (qAbs(state.sThumbLY) > DEADZONE) {
-        linearX = (state.sThumbLY / 32767.0f) * MAX_LINEAR_SPEED;
-    }
-    if (qAbs(state.sThumbRX) > DEADZONE) {
-        angularZ = -(state.sThumbRX / 32767.0f) * MAX_ANGULAR_SPEED;
-    }
-
-    // A按钮 → 急停
-    if (state.buttonA) {
-        linearX = 0.0f;
-        angularZ = 0.0f;
-        if (m_controller && m_controller->isTcpConnected()) {
-            m_controller->sendEmergencyStop();
-        }
-        addCommand("[手柄] 急停!");
-        return;
-    }
-
-    // 发送速度命令
-    if (m_controller && m_controller->isTcpConnected()) {
-        m_controller->sendVelocityCommand(linearX, 0.0f, angularZ);
-    }
-
-    // 方向变化日志（500ms节流防止刷屏）
-    static float lastLx = 0.0f, lastAz = 0.0f;
-    static qint64 lastLogTime = 0;
-    bool changed = (qAbs(linearX - lastLx) > 0.01f || qAbs(angularZ - lastAz) > 0.01f);
-    if (changed) {
-        lastLx = linearX;
-        lastAz = angularZ;
-        qint64 now = QDateTime::currentMSecsSinceEpoch();
-        if (now - lastLogTime >= 500) {
-            lastLogTime = now;
-            bool isStopped = (linearX == 0.0f && angularZ == 0.0f);
-            if (!isStopped) {
-                QString dir;
-                if (linearX > 0) dir += "前进 ";
-                if (linearX < 0) dir += "后退 ";
-                if (angularZ > 0) dir += "左转 ";
-                if (angularZ < 0) dir += "右转 ";
-                addCommand(QString("[手柄-车体] %1 (lx=%.2f az=%.2f)")
-                           .arg(dir.trimmed()).arg(linearX).arg(angularZ));
-            }
-        }
-    }
-}
-
-void MainWindow::handleGamepadArmMode(const ControllerState &state)
-{
-    const int16_t DEADZONE = 3000;
-    const float POSITION_SPEED = 0.01f;  // 位置增量 m
-    const float ROTATION_SPEED = 0.05f;  // 姿态增量 rad
-
-    // A按钮 → 急停
-    if (state.buttonA) {
-        if (m_controller && m_controller->isTcpConnected()) {
-            m_controller->sendEmergencyStop();
-        }
-        addCommand("[手柄-机械臂] 急停!");
-        return;
-    }
-
-    // 末端笛卡尔空间控制
-    float deltaX = 0.0f;  // 前后
-    float deltaY = 0.0f;  // 左右
-    float deltaZ = 0.0f;  // 上下
-    float deltaRoll = 0.0f;
-    float deltaPitch = 0.0f;
-    float deltaYaw = 0.0f;
-
-    // 左摇杆X → 末端左右移动 (Y轴)
-    if (qAbs(state.sThumbLX) > DEADZONE) {
-        deltaY = (state.sThumbLX / 32767.0f) * POSITION_SPEED;
-    }
-
-    // 左摇杆Y → 末端前后移动 (X轴)
-    if (qAbs(state.sThumbLY) > DEADZONE) {
-        deltaX = (state.sThumbLY / 32767.0f) * POSITION_SPEED;
-    }
-
-    // 右摇杆Y → 末端上下移动 (Z轴)
-    if (qAbs(state.sThumbRY) > DEADZONE) {
-        deltaZ = (state.sThumbRY / 32767.0f) * POSITION_SPEED;
-    }
-
-    // 右摇杆X → 末端偏航 (Yaw)
-    if (qAbs(state.sThumbRX) > DEADZONE) {
-        deltaYaw = (state.sThumbRX / 32767.0f) * ROTATION_SPEED;
-    }
-
-    // LT → 末端俯仰- (Pitch-)
-    if (state.bLeftTrigger > 30) {
-        deltaPitch = -(state.bLeftTrigger / 255.0f) * ROTATION_SPEED;
-    }
-
-    // RT → 末端俯仰+ (Pitch+)
-    if (state.bRightTrigger > 30) {
-        deltaPitch = (state.bRightTrigger / 255.0f) * ROTATION_SPEED;
-    }
-
-    // LB → 末端滚转- (Roll-)
-    if (state.leftShoulder) {
-        deltaRoll = -ROTATION_SPEED;
-    }
-
-    // RB → 末端滚转+ (Roll+)
-    if (state.rightShoulder) {
-        deltaRoll = ROTATION_SPEED;
-    }
-
-    // 发送末端控制命令
-    bool hasMovement = (qAbs(deltaX) > 0.001f || qAbs(deltaY) > 0.001f || qAbs(deltaZ) > 0.001f ||
-                        qAbs(deltaRoll) > 0.001f || qAbs(deltaPitch) > 0.001f || qAbs(deltaYaw) > 0.001f);
-
-    if (hasMovement) {
-        if (m_controller && m_controller->isTcpConnected()) {
-            m_controller->sendEndEffectorControl(deltaX, deltaY, deltaZ, deltaRoll, deltaPitch, deltaYaw);
-        }
-
-        // 日志（500ms节流防止刷屏）
-        static float lastX = 0.0f, lastY = 0.0f, lastZ = 0.0f;
-        static float lastRoll = 0.0f, lastPitch = 0.0f, lastYaw = 0.0f;
-        static qint64 lastLogTime = 0;
-        bool changed = (qAbs(deltaX - lastX) > 0.001f || qAbs(deltaY - lastY) > 0.001f ||
-                        qAbs(deltaZ - lastZ) > 0.001f || qAbs(deltaRoll - lastRoll) > 0.001f ||
-                        qAbs(deltaPitch - lastPitch) > 0.001f || qAbs(deltaYaw - lastYaw) > 0.001f);
-        if (changed) {
-            lastX = deltaX; lastY = deltaY; lastZ = deltaZ;
-            lastRoll = deltaRoll; lastPitch = deltaPitch; lastYaw = deltaYaw;
-            qint64 now = QDateTime::currentMSecsSinceEpoch();
-            if (now - lastLogTime >= 500) {
-                lastLogTime = now;
-                addCommand(QString("[手柄-末端] XYZ:(%.3f,%.3f,%.3f) RPY:(%.3f,%.3f,%.3f)")
-                           .arg(deltaX).arg(deltaY).arg(deltaZ)
-                           .arg(deltaRoll).arg(deltaPitch).arg(deltaYaw));
-            }
-        }
-    }
+    sendOperatorInputSnapshot();
 }

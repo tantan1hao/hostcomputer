@@ -1,5 +1,6 @@
 #include "KeyboardController.h"
 #include <QDebug>
+#include <algorithm>
 
 KeyboardController::KeyboardController(QObject *parent)
     : QObject(parent)
@@ -34,56 +35,25 @@ void KeyboardController::handleKeyPress(QKeyEvent *event)
         m_linearX = 0.0f;
         m_angularZ = 0.0f;
         emit velocityChanged(0.0f, 0.0f, 0.0f);
+        emit operatorInputChanged(pressedKeyNames());
         emit emergencyStopRequested();
         return;
     }
 
     if (!m_enabled) return;
 
-    if (m_controlMode == 2) {
-        // === 机械臂模式 ===
-        // 数字键1-6选择关节
-        if (key >= Qt::Key_1 && key <= Qt::Key_6) {
-            m_selectedJoint = key - Qt::Key_1;
-            qDebug() << "[键盘-机械臂] 选中关节:" << m_selectedJoint;
-            return;
-        }
-        // W/↑ 当前关节位置+
-        if (key == Qt::Key_W || key == Qt::Key_Up) {
-            emit jointControlRequested(m_selectedJoint, m_jointSpeed, m_jointSpeed);
-            return;
-        }
-        // S/↓ 当前关节位置-
-        if (key == Qt::Key_S || key == Qt::Key_Down) {
-            emit jointControlRequested(m_selectedJoint, -m_jointSpeed, m_jointSpeed);
-            return;
-        }
-        // A/← 执行器闭合
-        if (key == Qt::Key_A || key == Qt::Key_Left) {
-            emit executorControlRequested(-1.0f);
-            return;
-        }
-        // D/→ 执行器张开
-        if (key == Qt::Key_D || key == Qt::Key_Right) {
-            emit executorControlRequested(1.0f);
-            return;
-        }
-    } else {
-        // === 车体模式 ===
-        m_pressedKeys.insert(key);
-        computeVelocity();
-    }
+    m_pressedKeys.insert(key);
+    computeVelocity();
+    emit operatorInputChanged(pressedKeyNames());
 }
 
 void KeyboardController::handleKeyRelease(QKeyEvent *event)
 {
     if (!m_enabled || event->isAutoRepeat()) return;
 
-    // 机械臂模式下不处理释放事件
-    if (m_controlMode == 2) return;
-
     m_pressedKeys.remove(event->key());
     computeVelocity();
+    emit operatorInputChanged(pressedKeyNames());
 }
 
 void KeyboardController::computeVelocity()
@@ -113,7 +83,9 @@ void KeyboardController::computeVelocity()
 
 void KeyboardController::updateVelocity()
 {
-    // 仅车体模式下周期发送速度
+    emit operatorInputChanged(pressedKeyNames());
+
+    // 保留旧信号兼容内部旧调用；主链路不再使用它下发cmd_vel。
     if (m_controlMode == 0) {
         emit velocityChanged(m_linearX, 0.0f, m_angularZ);
     }
@@ -133,6 +105,7 @@ void KeyboardController::setEnabled(bool enabled)
         m_angularZ = 0.0f;
         // 禁用时发送一次零速度确保停车
         emit velocityChanged(0.0f, 0.0f, 0.0f);
+        emit operatorInputChanged(pressedKeyNames());
     }
 
     emit enabledChanged(enabled);
@@ -155,7 +128,58 @@ void KeyboardController::setControlMode(int mode)
     m_linearX = 0.0f;
     m_angularZ = 0.0f;
     m_selectedJoint = 0;
+    emit operatorInputChanged(pressedKeyNames());
     qDebug() << "[键盘] 控制模式切换:" << (mode == 0 ? "车体" : "机械臂");
 }
 
 int KeyboardController::controlMode() const { return m_controlMode; }
+
+QStringList KeyboardController::pressedKeyNames() const
+{
+    QStringList keys;
+    keys.reserve(m_pressedKeys.size());
+
+    for (int key : m_pressedKeys) {
+        const QString name = protocolKeyName(key);
+        if (!name.isEmpty()) {
+            keys.append(name);
+        }
+    }
+
+    keys.removeDuplicates();
+    keys.sort(Qt::CaseInsensitive);
+    return keys;
+}
+
+QString KeyboardController::protocolKeyName(int key) const
+{
+    switch (key) {
+    case Qt::Key_W: return QStringLiteral("w");
+    case Qt::Key_A: return QStringLiteral("a");
+    case Qt::Key_S: return QStringLiteral("s");
+    case Qt::Key_D: return QStringLiteral("d");
+    case Qt::Key_Up: return QStringLiteral("up");
+    case Qt::Key_Down: return QStringLiteral("down");
+    case Qt::Key_Left: return QStringLiteral("left");
+    case Qt::Key_Right: return QStringLiteral("right");
+    case Qt::Key_Space: return QStringLiteral("space");
+    case Qt::Key_Shift: return QStringLiteral("shift");
+    case Qt::Key_Control: return QStringLiteral("ctrl");
+    case Qt::Key_Alt: return QStringLiteral("alt");
+    case Qt::Key_Tab: return QStringLiteral("tab");
+    case Qt::Key_Return:
+    case Qt::Key_Enter: return QStringLiteral("enter");
+    case Qt::Key_Escape: return QStringLiteral("escape");
+    default:
+        break;
+    }
+
+    if (key >= Qt::Key_0 && key <= Qt::Key_9) {
+        return QStringLiteral("num_%1").arg(key - Qt::Key_0);
+    }
+    if (key >= Qt::Key_A && key <= Qt::Key_Z) {
+        return QString(QChar(static_cast<char>('a' + key - Qt::Key_A)));
+    }
+
+    return QString();
+}

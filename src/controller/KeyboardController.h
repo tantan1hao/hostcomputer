@@ -5,9 +5,10 @@
 #include <QSet>
 #include <QTimer>
 #include <QKeyEvent>
+#include <QStringList>
 
 /**
- * @brief 键盘输入驱动 - 将键盘按键映射为运动命令
+ * @brief 键盘输入驱动 - 采集协议层稳定按键名
  *
  * 车体模式键位映射:
  *   W/↑  - 前进
@@ -25,7 +26,7 @@
  *   Space - 急停
  *
  * 支持多键同时按下(如 W+A = 前进+左转)
- * 松开所有键后自动发送零速度(停止)
+ * 松开所有键后发送空按下集合，由下位机 watchdog 和输入解析负责停车。
  */
 class KeyboardController : public QObject
 {
@@ -51,6 +52,8 @@ public:
     int controlMode() const;
 
 signals:
+    void operatorInputChanged(const QStringList &pressedKeys);
+
     /// 速度命令信号: linearX=前后, angularZ=左右转
     void velocityChanged(float linearX, float linearY, float angularZ);
     void emergencyStopRequested();
@@ -65,6 +68,8 @@ private slots:
 
 private:
     void computeVelocity();
+    QStringList pressedKeyNames() const;
+    QString protocolKeyName(int key) const;
 
     QSet<int> m_pressedKeys;
     QTimer *m_sendTimer;

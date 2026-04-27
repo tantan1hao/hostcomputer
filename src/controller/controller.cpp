@@ -91,6 +91,16 @@ bool Controller::sendMotorCommand(const Communication::MotorState &state)
     return m_tcpClient->sendMotorCommand(state);
 }
 
+bool Controller::sendOperatorInput(const Communication::OperatorInputState &inputState)
+{
+    if (!m_tcpClient || !m_tcpClient->isConnected()) {
+        qWarning() << "TCP not connected, cannot send operator input";
+        return false;
+    }
+
+    return m_tcpClient->sendOperatorInput(inputState);
+}
+
 bool Controller::sendControlCommand(const Communication::Command &command)
 {
     if (!m_tcpClient || !m_tcpClient->isConnected()) {

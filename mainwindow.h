@@ -5,6 +5,7 @@
 #include <QTimer>
 #include <QDateTime>
 #include <QLabel>
+#include <QStringList>
 #include "src/communication/SharedStructs.h"
 
 #include "src/controller/controller.h"
@@ -81,6 +82,7 @@ private:
     void updateConnectionDisplay();
     void updateHeartbeatDisplay();
     void updateGamepadDisplay();
+    void sendOperatorInputSnapshot();
     void formatAndAddCommand(const QString& command);
     void formatAndAddError(const QString& error);
     QString getCurrentTimestamp() const;
@@ -88,8 +90,6 @@ private:
 
     // 模式切换
     void switchControlMode(ControlMode mode);
-    void handleGamepadVehicleMode(const ControllerState &state);
-    void handleGamepadArmMode(const ControllerState &state);
 
 private slots:
     // Controller层信号处理
@@ -152,6 +152,9 @@ private:
 
     // 控制模式
     ControlMode m_controlMode = ControlMode::Vehicle;
+    QStringList m_keyboardPressedKeys;
+    ControllerState m_latestGamepadState = {};
+    bool m_gamepadConnected = false;
 
     // 定时器
     QTimer* m_statusTimer;
