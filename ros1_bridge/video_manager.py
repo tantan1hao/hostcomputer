@@ -24,6 +24,7 @@ class RtspConfig:
     publish_host: str = "127.0.0.1"
     port: int = 8554
     server: str = "mediamtx"
+    transport: str = "tcp"
 
     def public_url(self, path: str) -> str:
         return f"rtsp://{self.host}:{self.port}/{path}"
@@ -72,6 +73,7 @@ class DirectVideoSource:
             "kind": "direct",
             "online": online,
             "rtsp_url": rtsp.public_url(self.rtsp_path) if online else "",
+            "rtsp_transport": rtsp.transport,
             "codec": self.codec,
             "width": self.width,
             "height": self.height,
@@ -261,6 +263,8 @@ class VideoManager:
         command += list(source.extra_input_args)
         command += ["-i", source.device, "-an"]
         command += self._ffmpeg_codec_args(source)
+        if self.config.rtsp.transport:
+            command += ["-rtsp_transport", self.config.rtsp.transport]
         command += list(source.extra_output_args)
         command += ["-f", "rtsp", output_url]
         return command
@@ -337,6 +341,7 @@ def parse_video_config(data: Dict[str, Any]) -> VideoConfig:
         publish_host=publish_host,
         port=_positive_int(rtsp_data, "port", default=8554),
         server=_required_str(rtsp_data, "server", default="mediamtx"),
+        transport=_rtsp_transport(rtsp_data),
     )
 
     source_items = data.get("direct_sources", []) or []
@@ -413,6 +418,13 @@ def _required_str(data: Dict[str, Any], key: str, default: Optional[str] = None)
     if not isinstance(value, str) or not value.strip():
         raise VideoConfigError(f"{key} must be a non-empty string")
     return value.strip()
+
+
+def _rtsp_transport(data: Dict[str, Any]) -> str:
+    transport = _required_str(data, "transport", default="tcp").lower()
+    if transport not in ("tcp", "udp"):
+        raise VideoConfigError("rtsp.transport must be tcp or udp")
+    return transport
 
 
 def _positive_int(data: Dict[str, Any], key: str, default: Optional[int] = None) -> int:

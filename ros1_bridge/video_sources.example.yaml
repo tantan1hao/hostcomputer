@@ -3,6 +3,7 @@ rtsp:
   publish_host: 127.0.0.1
   port: 8554
   server: mediamtx
+  transport: tcp
 
 direct_sources:
   - camera_id: 0

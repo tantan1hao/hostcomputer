@@ -83,6 +83,7 @@ def stop_process(proc: subprocess.Popen) -> None:
 def test_config_and_runner() -> None:
     cfg = load_video_config(CONFIG)
     assert cfg.rtsp.host == "192.168.1.50"
+    assert cfg.rtsp.transport == "tcp"
     assert len(cfg.direct_sources) == 2
 
     manager = VideoManager(cfg, dry_run=True)
@@ -90,6 +91,8 @@ def test_config_and_runner() -> None:
     assert started["online"] is True
     assert started["camera_id"] == 0
     assert started["rtsp_url"] == "rtsp://192.168.1.50:8554/front_raw"
+    assert started["rtsp_transport"] == "tcp"
+    assert "-rtsp_transport tcp" in started["command"]
     assert "rtsp://127.0.0.1:8554/front_raw" in started["command"]
 
     stopped = manager.stop(0)
