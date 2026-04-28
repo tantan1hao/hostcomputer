@@ -42,7 +42,7 @@ ninja
 │  Controller (src/controller/)                    │ ← 业务逻辑层
 │  + UI控件: RtspPlayerWidget, CO2DisplayWidget,   │
 │    GamepadDisplayWidget, DisplayLayoutManager    │
-│  + 输入: KeyboardController, HandleKey(XInput)   │
+│  + 输入: KeyboardController, HandleKey(SDL3)     │
 ├─────────────────────────────────────────────────┤
 │  Communication (src/communication/)              │ ← 通信层：仅TCP/JSON
 │  ROS1TcpClient + SharedStructs                   │
@@ -75,7 +75,7 @@ ninja
 ### 控制 (src/controller/)
 - **`Controller`**：业务逻辑核心，封装所有与下位机交互的命令接口
 - **`KeyboardController`**：采集键盘输入并输出协议层按键名（车体/机械臂双模式）
-- **`HandleKey`**：XInput手柄驱动，轮询手柄状态并发出`ControllerState`信号
+- **`HandleKey`**：SDL3 Gamepad手柄驱动，Windows下保留XInput fallback，轮询手柄状态并发出`ControllerState`信号
 - **`RtspPlayerWidget`**：基于 FFmpeg 子进程低缓冲拉流的 RTSP 视频播放控件，5 路并发
 - **`DisplayLayoutManager`**：管理2×3视频网格布局
 - **`RobotViewModel`**：QML与C++桥接，暴露Roll/Pitch/Yaw属性给3D姿态视图

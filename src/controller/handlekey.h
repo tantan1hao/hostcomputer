@@ -4,6 +4,10 @@
 #include <QObject>
 #include <QTimer>
 
+#ifdef USE_SDL3_GAMEPAD
+typedef struct SDL_Gamepad SDL_Gamepad;
+#endif
+
 struct ControllerState {
     bool buttonA;
     bool buttonB;
@@ -31,7 +35,6 @@ struct ControllerState {
     uint8_t bLeftTrigger;  // 左扳机 (0-255)
     uint8_t bRightTrigger; // 右扳机 (0-255)
 
-    uint8_t modeIndex;     // 模式索引
 };
 
 class HandleKey : public QObject
@@ -40,6 +43,8 @@ class HandleKey : public QObject
 
 public:
     explicit HandleKey(QObject *parent = nullptr);
+    ~HandleKey() override;
+
     bool isConnected() const { return m_connected; }
     void startPolling();
     void stopPolling();
@@ -52,6 +57,23 @@ private slots:
     void readGamepad();
 
 private:
+    void setConnected(bool connected);
+    void publishStateIfChanged(const ControllerState &newState);
+
+#ifdef USE_SDL3_GAMEPAD
+    bool initSdl();
+    void shutdownSdl();
+    bool openFirstSdlGamepad();
+    void closeSdlGamepad();
+    bool readSdlGamepad(ControllerState &newState);
+    SDL_Gamepad *m_sdlGamepad = nullptr;
+    bool m_sdlInitialized = false;
+#endif
+
+#ifdef Q_OS_WIN
+    bool readXInputGamepad(ControllerState &newState);
+#endif
+
     QTimer *timer;
     ControllerState state = {};
     bool m_connected = false;

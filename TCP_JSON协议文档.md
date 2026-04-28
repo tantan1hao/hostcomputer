@@ -154,7 +154,7 @@
 | protocol_version | int | 协议版本，当前为 1 |
 | seq | int64 | 上位机单调递增序号 |
 | timestamp_ms | int64 | 毫秒级时间戳 |
-| params.source | string | 触发来源，例如 `button`、`keyboard_space`、`gamepad_a` |
+| params.source | string | 触发来源，例如 `button`、`keyboard_space`、`gamepad_l3_r3` |
 
 ---
 

@@ -26,8 +26,8 @@ class QTextEdit;
 
 // 控制模式枚举
 enum class ControlMode {
-    Vehicle = 0,  // 车体运动模式 (D-Pad上)
-    Arm = 2       // 机械臂操控模式 (D-Pad下)
+    Vehicle = 0,
+    Arm = 2
 };
 
 class MainWindow : public QMainWindow
@@ -89,9 +89,6 @@ private:
     QString getCurrentTimestamp() const;
     void triggerEmergencyStop(const QString &source);
 
-    // 模式切换
-    void switchControlMode(ControlMode mode);
-
 private slots:
     // Controller层信号处理
     void onTcpConnected();
@@ -152,11 +149,12 @@ private:
     int m_errorCount = 0;
     qint64 m_lastEmergencyStopMs = 0;
 
-    // 控制模式
+    // 协议兼容字段；普通输入语意由下位机解析
     ControlMode m_controlMode = ControlMode::Vehicle;
     QStringList m_keyboardPressedKeys;
     ControllerState m_latestGamepadState = {};
     bool m_gamepadConnected = false;
+    bool m_gamepadStickEmergencyHeld = false;
 
     // 定时器
     QTimer* m_statusTimer;

@@ -28,9 +28,6 @@ public:
     void setEnabled(bool enabled);
     bool isEnabled() const;
 
-    void setControlMode(int mode);
-    int controlMode() const;
-
 signals:
     void operatorInputChanged(const QStringList &pressedKeys);
     void emergencyStopRequested();
@@ -47,8 +44,6 @@ private:
     QTimer *m_sendTimer;
 
     bool m_enabled;
-    int m_controlMode;     // 0=车体, 2=机械臂
-
     static const int SEND_INTERVAL_MS = 100;  // 10Hz
 };
 

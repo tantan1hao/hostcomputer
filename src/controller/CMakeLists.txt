@@ -65,6 +65,15 @@ target_link_libraries(controller_layer PUBLIC
     # ${OpenCV_LIBS}  # 暂时注释，避免依赖问题
 )
 
+# 优先启用vendored SDL3作为跨平台手柄后端（Linux/Windows均可支持DS4/DS5/Xbox等）
+if(TARGET SDL3::SDL3)
+    target_link_libraries(controller_layer PUBLIC SDL3::SDL3)
+    target_compile_definitions(controller_layer PUBLIC USE_SDL3_GAMEPAD)
+    message(STATUS "SDL3 gamepad backend enabled")
+else()
+    message(STATUS "SDL3 gamepad backend not found; using platform fallback only")
+endif()
+
 # Windows平台链接XInput库（手柄驱动）
 if(WIN32)
     target_link_libraries(controller_layer PUBLIC xinput)

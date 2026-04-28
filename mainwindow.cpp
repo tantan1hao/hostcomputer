@@ -242,8 +242,6 @@ void MainWindow::setupKeyboardController()
     // 默认启用键盘控制
     m_keyboardController->setEnabled(true);
 
-    // 同步当前控制模式
-    m_keyboardController->setControlMode(static_cast<int>(m_controlMode));
 }
 
 void MainWindow::setupHandleKey()
@@ -256,6 +254,7 @@ void MainWindow::setupHandleKey()
         m_gamepadConnected = connected;
         if (!connected) {
             m_latestGamepadState = {};
+            m_gamepadStickEmergencyHeld = false;
         }
         updateGamepadDisplay();
         if (connected) {
@@ -661,18 +660,12 @@ void MainWindow::triggerEmergencyStop(const QString &source)
         addCommand("[急停] 键盘控制器已重置");
     }
 
-    // 3. 切换回车体模式（安全模式）
-    if (m_controlMode != ControlMode::Vehicle) {
-        switchControlMode(ControlMode::Vehicle);
-        addCommand("[急停] 已切换回车体模式");
-    }
-
     sendOperatorInputSnapshot();
 
-    // 4. 状态栏提示
+    // 3. 状态栏提示
     statusBar()->showMessage("⚠️ 急停已触发！所有运动已停止", 5000);
 
-    // 5. 视觉反馈：按钮闪烁效果
+    // 4. 视觉反馈：按钮闪烁效果
     QPushButton* btn = ui->btn_emergency_stop;
     QString originalStyle = btn->styleSheet();
     btn->setStyleSheet("QPushButton { background-color: #FFFF00; color: black; border: 3px solid #FF0000; }");
@@ -1387,41 +1380,15 @@ void MainWindow::onGamepadStateReceived(const ControllerState &state)
         else m_controlPanel->updateGamepadButton("--", false);
     }
 
-    // === 2. D-Pad检测模式切换（模式仍由上位机UI展示，输入含完整D-Pad状态） ===
-    if (state.dpadUp) {
-        switchControlMode(ControlMode::Vehicle);
-    }
-    if (state.dpadDown) {
-        switchControlMode(ControlMode::Arm);
-    }
-
-    if (state.buttonA) {
-        addCommand("[手柄] 急停!");
-        triggerEmergencyStop(QStringLiteral("gamepad_a"));
+    const bool stickEmergencyPressed = state.leftThumb && state.rightThumb;
+    if (stickEmergencyPressed && !m_gamepadStickEmergencyHeld) {
+        m_gamepadStickEmergencyHeld = true;
+        addCommand("[手柄] L3+R3 急停!");
+        triggerEmergencyStop(QStringLiteral("gamepad_l3_r3"));
         return;
     }
-
-    sendOperatorInputSnapshot();
-}
-
-void MainWindow::switchControlMode(ControlMode mode)
-{
-    if (m_controlMode == mode) return;
-    m_controlMode = mode;
-
-    QString modeName = (mode == ControlMode::Vehicle) ? "车体运动" : "机械臂操控";
-    ui->label_mode_value->setText(modeName);
-    if (m_controlPanel) {
-        m_controlPanel->setModeText(modeName);
-    }
-    if (m_telemetryPanel) {
-        m_telemetryPanel->setModeText(modeName);
-    }
-    addCommand(QString("[模式切换] %1").arg(modeName));
-
-    // 同步通知键盘控制器
-    if (m_keyboardController) {
-        m_keyboardController->setControlMode(static_cast<int>(mode));
+    if (!stickEmergencyPressed) {
+        m_gamepadStickEmergencyHeld = false;
     }
 
     sendOperatorInputSnapshot();

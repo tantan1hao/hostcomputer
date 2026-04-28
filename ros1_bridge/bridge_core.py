@@ -129,7 +129,7 @@ class BridgeCore:
             "watchdog_ms": self.watchdog_ms,
             "keyboard_mapping": {
                 "mode_switch": "1",
-                "emergency": "space",
+                "emergency": "space or gamepad l3+r3",
                 "speed_levels": {"6": 1, "7": 2, "8": 3, "9": 4, "0": 5},
                 "vehicle": {
                     "linear_x": {"positive": "w", "negative": "s"},
@@ -426,7 +426,7 @@ class BridgeCore:
         if self.has_emergency_input(pressed, current_buttons):
             with self.state_lock:
                 self.state.emergency_active = True
-                self.state.emergency_source = "keyboard_space" if "space" in pressed else "gamepad_a"
+                self.state.emergency_source = "keyboard_space" if "space" in pressed else "gamepad_l3_r3"
                 self.state.watchdog_active = False
             self.publish_zero("operator_input_emergency")
             self.events.emit("emergency", "operator input emergency key accepted", level="warning", data={
@@ -616,7 +616,7 @@ class BridgeCore:
         return {name for name, value in buttons.items() if bool(value)}
 
     def has_emergency_input(self, pressed: Set[str], active_buttons: Set[str]) -> bool:
-        return bool(self.EMERGENCY_KEYS & pressed) or "a" in active_buttons
+        return bool(self.EMERGENCY_KEYS & pressed) or {"l3", "r3"}.issubset(active_buttons)
 
     def apply_mode_and_speed_edges(self, key_edges: Set[str], button_edges: Set[str], seq: int) -> None:
         mode_changed = False
