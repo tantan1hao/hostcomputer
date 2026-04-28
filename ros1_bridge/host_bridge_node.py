@@ -53,6 +53,7 @@ class HostBridgeServer:
             gripper_initial_position,
             cameras,
             self.video_manager.camera_infos if self.video_manager else None,
+            self.handle_camera_stream_request if self.video_manager else None,
             self.events,
         )
         self.runtime = BridgeRuntime(self.core, self.broadcast)
@@ -99,6 +100,35 @@ class HostBridgeServer:
         while not self.stop_event.wait(self.video_poll_sec):
             for camera in self.video_manager.refresh():
                 self.broadcast(self.core.make_camera_info(camera))
+
+    def handle_camera_stream_request(self, params: Dict[str, Any]) -> Tuple[bool, int, str, Optional[Dict[str, Any]]]:
+        if not self.video_manager:
+            return False, 2400, "video manager unavailable", None
+
+        try:
+            camera_id = int(params.get("camera_id"))
+        except (TypeError, ValueError):
+            return False, 2401, "camera_id must be an integer", None
+
+        action = str(params.get("action", "")).strip().lower()
+        try:
+            if action == "start":
+                camera = self.video_manager.start(camera_id)
+            elif action == "stop":
+                camera = self.video_manager.stop(camera_id)
+            elif action == "restart":
+                camera = self.video_manager.restart(camera_id)
+            else:
+                return False, 2402, f"unsupported camera stream action: {action}", None
+        except KeyError:
+            return False, 2403, f"unknown camera_id: {camera_id}", None
+
+        self.events.emit("video", "camera stream request handled", data={
+            "camera_id": camera_id,
+            "action": action,
+            "online": camera.get("online", False),
+        })
+        return True, 0, f"camera stream {action} accepted", camera
 
     def remove_client(self, client: "BridgeClient") -> None:
         with self.client_lock:

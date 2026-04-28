@@ -42,6 +42,7 @@ class BridgeCore:
         gripper_initial_position: float = 0.022,
         cameras: Optional[List[Dict[str, Any]]] = None,
         camera_provider: Optional[Callable[[], List[Dict[str, Any]]]] = None,
+        camera_stream_handler: Optional[Callable[[Dict[str, Any]], Tuple[bool, int, str, Optional[Dict[str, Any]]]]] = None,
         events: Optional[EventSink] = None,
     ) -> None:
         self.output = output
@@ -61,6 +62,7 @@ class BridgeCore:
         self.gripper_max_position = gripper_max_position
         self.cameras = cameras if cameras is not None else self.default_cameras()
         self.camera_provider = camera_provider
+        self.camera_stream_handler = camera_stream_handler
         self.state = BridgeState(
             control_mode=self.MODE_VEHICLE,
             gripper_target=self.clamp_gripper(gripper_initial_position),
@@ -116,6 +118,7 @@ class BridgeCore:
                 "system_snapshot",
                 "camera_list_request",
                 "camera_list_response",
+                "camera_stream_request",
                 "emergency_state",
                 "watchdog",
                 "keyboard_base_arm_mapping",
@@ -303,6 +306,16 @@ class BridgeCore:
             cameras = self.current_cameras()
             self.events.emit("camera", "camera list requested", data={"seq": seq, "count": len(cameras)})
             yield self.make_camera_list_response(seq)
+            return
+
+        if msg_type == "camera_stream_request":
+            if self.camera_stream_handler is None:
+                yield self.make_ack(msg, False, 2400, "video manager unavailable")
+                return
+            ok, code, message, camera = self.camera_stream_handler(msg.get("params", {}) or {})
+            yield self.make_ack(msg, ok, code, message)
+            if camera is not None:
+                yield self.make_camera_info(camera)
             return
 
         if msg_type == "operator_input":
