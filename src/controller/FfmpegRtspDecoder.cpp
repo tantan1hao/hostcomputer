@@ -168,7 +168,7 @@ void FfmpegRtspDecoder::decoderLoop(const QString &program, const QStringList &a
 
     if (!process.waitForStarted(3000)) {
         if (!m_stopRequested.load()) {
-            emit failed(QStringLiteral("无法启动 ffmpeg，请确认 ffmpeg 在 PATH 中，或设置 HOSTCOMPUTER_FFMPEG_PATH"));
+            emit failed(QStringLiteral("无法启动 ffmpeg：请将 ffmpeg 放在上位机可执行文件同目录，或设置 HOSTCOMPUTER_FFMPEG_PATH"));
         }
         return;
     }
