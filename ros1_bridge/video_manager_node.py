@@ -4,6 +4,7 @@ import json
 import os
 import signal
 import socket
+import sys
 import threading
 import time
 from typing import Any, Dict, Optional
@@ -297,8 +298,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def parse_node_args() -> argparse.Namespace:
+    return build_arg_parser().parse_args([
+        arg for arg in sys.argv[1:] if ":=" not in arg
+    ])
+
+
 def main() -> int:
-    args = build_arg_parser().parse_args()
+    args = parse_node_args()
     try:
         node = VideoManagerNode(
             config_path=os.path.expanduser(args.config),

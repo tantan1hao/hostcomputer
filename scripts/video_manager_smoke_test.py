@@ -129,6 +129,28 @@ def test_config_and_runner() -> None:
     assert restarted["restart_count"] == 1
 
 
+def test_roslaunch_remap_args_are_ignored() -> None:
+    for script, node_name in (
+        (VIDEO_MANAGER_NODE, "video_manager_node"),
+        (BRIDGE, "host_bridge_node"),
+    ):
+        result = subprocess.run(
+            [
+                sys.executable,
+                script,
+                "--help",
+                f"__name:={node_name}",
+                f"__log:=/tmp/{node_name}.log",
+            ],
+            cwd=ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+
+
 def test_bridge_video_requests() -> None:
     manager_proc = subprocess.Popen(
         [
@@ -233,6 +255,7 @@ def test_bridge_video_requests() -> None:
 
 def main() -> None:
     test_config_and_runner()
+    test_roslaunch_remap_args_are_ignored()
     test_bridge_video_requests()
     print("video manager smoke: PASS")
 

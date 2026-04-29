@@ -3,6 +3,7 @@ import argparse
 import json
 import os
 import socket
+import sys
 import threading
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -441,8 +442,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def parse_node_args() -> argparse.Namespace:
+    return build_arg_parser().parse_args([
+        arg for arg in sys.argv[1:] if ":=" not in arg
+    ])
+
+
 def main() -> None:
-    args = build_arg_parser().parse_args()
+    args = parse_node_args()
     events = RingBufferEventSink()
     service_commands = dict(args.service_command or [])
     
