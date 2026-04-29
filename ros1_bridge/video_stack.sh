@@ -113,6 +113,30 @@ ensure_mediamtx() {
   }
 }
 
+ensure_ros_master() {
+  if [[ "$BRIDGE_MODE" == "--dry-run" || "${SKIP_ROS_MASTER_CHECK:-0}" == "1" ]]; then
+    return 0
+  fi
+  python3 - <<'PY'
+import os
+import socket
+import sys
+from urllib.parse import urlparse
+
+uri = os.environ.get("ROS_MASTER_URI", "http://localhost:11311")
+parsed = urlparse(uri)
+host = parsed.hostname or "localhost"
+port = parsed.port or 11311
+try:
+    with socket.create_connection((host, port), timeout=0.5):
+        pass
+except OSError as exc:
+    print(f"ERROR: ROS master is not reachable at {uri}: {exc}", file=sys.stderr)
+    print("Start roscore or set ROS_SETUP/ROS_MASTER_URI before video_stack.sh start.", file=sys.stderr)
+    sys.exit(1)
+PY
+}
+
 show_pid() {
   local name="$1"
   local pid_file="$PID_DIR/${name}.pid"
@@ -165,6 +189,8 @@ start_stack() {
 
   start_process video_manager_node "${video_manager_cmd[@]}"
   wait_for_port "video_manager_node" "$VIDEO_MANAGER_HOST" "$VIDEO_MANAGER_PORT" "${VIDEO_MANAGER_WAIT_SEC:-8}"
+
+  ensure_ros_master
 
   start_process host_bridge_node \
     python3 "$SCRIPT_DIR/host_bridge_node.py" \

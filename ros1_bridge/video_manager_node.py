@@ -67,11 +67,6 @@ class VideoManagerNode:
         )
 
     def serve_forever(self) -> None:
-        if self.autostart:
-            with self._manager_lock:
-                started = self.manager.start_enabled()
-            print(f"[video-manager] autostarted {len(started)} stream(s)", flush=True)
-
         threading.Thread(target=self._monitor_loop, daemon=True).start()
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
@@ -80,6 +75,8 @@ class VideoManagerNode:
                 server.listen(8)
                 server.settimeout(0.5)
                 print(f"[video-manager] listening on {self.host}:{self.port}", flush=True)
+                if self.autostart:
+                    threading.Thread(target=self._autostart_streams, daemon=True).start()
                 while not self.stop_event.is_set():
                     try:
                         conn, addr = server.accept()
@@ -95,6 +92,11 @@ class VideoManagerNode:
 
     def stop(self) -> None:
         self.stop_event.set()
+
+    def _autostart_streams(self) -> None:
+        with self._manager_lock:
+            started = self.manager.start_enabled()
+        print(f"[video-manager] autostarted {len(started)} stream(s)", flush=True)
 
     def _monitor_loop(self) -> None:
         while not self.stop_event.wait(self.poll_sec):
