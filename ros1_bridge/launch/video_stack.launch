@@ -18,6 +18,9 @@
   <arg name="video_manager_extra_args" default="" />
 
   <arg name="rtsp_port" default="8554" />
+  <arg name="start_mediamtx" default="true" />
+  <arg name="mediamtx_bin" default="mediamtx" />
+  <arg name="mediamtx_extra_args" default="" />
   <arg name="bridge_mode" default="--ros" />
   <arg name="bridge_host" default="0.0.0.0" />
   <arg name="bridge_port" default="9090" />
@@ -42,6 +45,16 @@
 
   <arg name="respawn" default="true" />
   <arg name="respawn_delay" default="2.0" />
+
+  <node if="$(arg start_mediamtx)"
+        pkg="ros1_bridge"
+        type="mediamtx_launcher.sh"
+        name="mediamtx"
+        output="screen"
+        respawn="false"
+        args="--bin $(arg mediamtx_bin)
+              --port $(arg rtsp_port)
+              $(arg mediamtx_extra_args)" />
 
   <node pkg="ros1_bridge"
         type="video_manager_node.py"
