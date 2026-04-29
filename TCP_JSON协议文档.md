@@ -154,22 +154,40 @@
 | protocol_version | int | 协议版本，当前为 1 |
 | seq | int64 | 上位机单调递增序号 |
 | timestamp_ms | int64 | 毫秒级时间戳 |
-| params.source | string | 触发来源，例如 `button`、`keyboard_space`、`gamepad_a` |
+| params.source | string | 触发来源，例如 `button`、`keyboard_space`、`gamepad_l3_r3` |
 
 ---
 
 ### 5. system_command — 系统命令
 
-通用系统命令，可携带任意参数。
+通用系统命令，可携带任意参数。当前 UI 直接使用它触发生命周期服务和控制域切换。
 
 ```json
 {
   "type": "system_command",
-  "command": "reset",
+  "protocol_version": 1,
+  "seq": 42,
+  "command": "enable",
+  "params": {},
+  "timestamp_ms": 1709971200000
+}
+```
+
+生命周期命令映射到 `Eyou_ROS1_Master` 的 Trigger 服务：
+`init`、`enable`、`disable`、`halt`、`resume`、`recover`、`shutdown`。
+
+控制域只表示上位机输入转发所处的业务域，不表示底层关节控制模式：
+
+```json
+{
+  "type": "system_command",
+  "protocol_version": 1,
+  "seq": 43,
+  "command": "set_control_mode",
   "params": {
-    "mode": "soft"
+    "mode": "arm"
   },
-  "timestamp": 1709971200000
+  "timestamp_ms": 1709971200000
 }
 ```
 
@@ -177,7 +195,8 @@
 |------|------|------|
 | command | string | 命令名称 |
 | params | object | 命令参数（任意键值对） |
-| timestamp | int64 | 毫秒级时间戳 |
+| params.mode | string | `set_control_mode` 使用，取值 `vehicle` / `arm` |
+| timestamp_ms | int64 | 毫秒级时间戳 |
 
 ---
 
@@ -248,6 +267,50 @@ mock server 可用环境变量模拟 ACK 行为：
 
 ---
 
+### 7.1 service_call_result — ROS service 调用结果
+
+当下位机为了执行关键命令调用 ROS service 时，应额外回传一次简略结果。它不替代 `ack`：`ack` 仍用于命令链路确认，`service_call_result` 用于展示真实 service 执行结果。
+
+```json
+{
+  "type": "service_call_result",
+  "protocol_version": 1,
+  "seq": 2002,
+  "timestamp_ms": 1709971200100,
+  "request_type": "system_command",
+  "command": "enable",
+  "service": "/hybrid_motor_hw_node/enable",
+  "ok": true,
+  "code": 0,
+  "message": "enabled",
+  "duration_ms": 18
+}
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| seq | int64 | 对应原 TCP 命令的 `seq` |
+| request_type | string | 原 TCP 消息类型，例如 `system_command` / `emergency_stop` |
+| command | string | 触发的命令名，例如 `enable` / `set_control_mode` |
+| service | string | ROS service 名称 |
+| ok | bool | service 调用是否成功 |
+| code | int | 0 成功，非 0 为错误码 |
+| message | string | 简略结果说明 |
+| duration_ms | int | service 调用耗时，毫秒 |
+
+当前 `ros1_bridge` 已对生命周期命令 `init` / `enable` / `disable` / `halt` / `resume` / `recover` / `shutdown` 回传该消息。
+`emergency_stop`、`set_control_mode` 等其它命令如果也需要调用 ROS service，可在启动桥接节点时显式配置：
+
+```bash
+python3 ros1_bridge/host_bridge_node.py --ros \
+  --service-command emergency_stop=/safety/emergency_stop \
+  --service-command set_control_mode=/control/set_{mode}_mode
+```
+
+`--service-command` 目前按 `std_srvs/Trigger` 调用，服务名模板支持 `{command}`、`{mode}`、`{source}` 占位。
+
+---
+
 ### 8. sync_request — 状态同步请求
 
 上位机连接或重连后自动发送，请求下位机返回当前系统快照。
@@ -308,7 +371,9 @@ mock server 可用环境变量模拟 ACK 行为：
     "heartbeat_ack",
     "critical_ack",
     "sync_request",
-    "camera_list_request"
+    "camera_list_request",
+    "joint_runtime_states",
+    "hybrid_lifecycle_services"
   ],
   "max_frame_bytes": 1048576
 }
@@ -387,6 +452,41 @@ mock server 可用环境变量模拟 ACK 行为：
 | executor_torque | float | 执行器扭矩 |
 | executor_flags | int | 执行器标志位 |
 | reserved | int | 保留字段 |
+
+---
+
+### 1.1 joint_runtime_states — 关节生命周期状态
+
+下位机转发 `Eyou_ROS1_Master/JointRuntimeStateArray`，用于上位机显示电机生命状态。
+
+```json
+{
+  "type": "joint_runtime_states",
+  "protocol_version": 1,
+  "seq": 0,
+  "timestamp_ms": 1709971200000,
+  "states": [
+    {
+      "joint_name": "left_front_arm_joint",
+      "backend": "canopen",
+      "lifecycle_state": "Running",
+      "online": true,
+      "enabled": true,
+      "fault": false
+    }
+  ]
+}
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| states | array | 关节运行态列表 |
+| states[].joint_name | string | 关节名 |
+| states[].backend | string | 后端，例如 `canopen` / `can_driver` |
+| states[].lifecycle_state | string | 统一生命周期状态 |
+| states[].online | bool | 当前反馈是否在线/新鲜 |
+| states[].enabled | bool | 关节是否使能 |
+| states[].fault | bool | 是否处于故障状态 |
 
 ---
 

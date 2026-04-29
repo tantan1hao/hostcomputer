@@ -451,7 +451,7 @@ string action_hint
 4. 键盘按 `1` 切到机械臂模式，按 `6/7/8/9/0` 选择速度档，再按 `W/S` 等方向键，看 bridge 输出的机械臂控制话题
 5. 键盘按 `A/D`，看 `/executor_command`
 6. 手柄切到机械臂模式，推动摇杆和扳机，看 `/cartesian_command`
-7. 按空格或手柄 `A`，看 `/emergency_stop`
+7. 按空格或手柄 `L3+R3`，看 `/emergency_stop`
 
 ### 12.2 推荐观察命令
 

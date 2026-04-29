@@ -24,12 +24,18 @@ set(CONTROLLER_SOURCES
     GamepadDisplayWidget.h
     DisplayLayoutManager.cpp
     DisplayLayoutManager.h
+    FfmpegRtspDecoder.cpp
+    FfmpegRtspDecoder.h
     KeyboardController.cpp
     KeyboardController.h
+    MotorRuntimeCarouselWidget.cpp
+    MotorRuntimeCarouselWidget.h
     handlekey.cpp
     handlekey.h
     RtspPlayerWidget.cpp
     RtspPlayerWidget.h
+    VideoFrameWidget.cpp
+    VideoFrameWidget.h
     RobotAttitudeWidget.cpp
     RobotAttitudeWidget.h
     RobotViewModel.cpp
@@ -49,8 +55,6 @@ target_link_libraries(controller_layer PUBLIC
     Qt6::Core
     Qt6::Widgets
     Qt6::Network
-    Qt6::Multimedia
-    Qt6::MultimediaWidgets
     Qt6::Qml
     Qt6::Quick
     Qt6::QuickWidgets
@@ -62,6 +66,15 @@ target_link_libraries(controller_layer PUBLIC
     # OpenCV 依赖（如果需要）
     # ${OpenCV_LIBS}  # 暂时注释，避免依赖问题
 )
+
+# 优先启用vendored SDL3作为跨平台手柄后端（Linux/Windows均可支持DS4/DS5/Xbox等）
+if(TARGET SDL3::SDL3)
+    target_link_libraries(controller_layer PUBLIC SDL3::SDL3)
+    target_compile_definitions(controller_layer PUBLIC USE_SDL3_GAMEPAD)
+    message(STATUS "SDL3 gamepad backend enabled")
+else()
+    message(STATUS "SDL3 gamepad backend not found; using platform fallback only")
+endif()
 
 # Windows平台链接XInput库（手柄驱动）
 if(WIN32)

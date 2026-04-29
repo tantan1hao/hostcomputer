@@ -11,3 +11,4 @@ __pycache__/
 *.user.*
 CMakeLists.txt.user*
 *.autosave
+.qodo/

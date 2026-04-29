@@ -99,6 +99,10 @@ def start_bridge() -> subprocess.Popen:
             HOST,
             "--debug-port",
             str(DEBUG_PORT),
+            "--service-command",
+            "set_control_mode=dry-run:/control/{mode}",
+            "--service-command",
+            "emergency_stop=dry-run:/safety/emergency_stop",
         ],
         cwd=ROOT,
         stdout=subprocess.DEVNULL,
@@ -322,23 +326,65 @@ def main() -> None:
             assert watchdog["cmd_vel"]["angular_z"] == 0.0
 
             client.send({
-                "type": "emergency_stop",
+                "type": "system_command",
                 "protocol_version": 1,
                 "seq": 13,
+                "timestamp_ms": now_ms(),
+                "command": "enable",
+                "params": {},
+            })
+            lifecycle_ack = client.recv_until("ack")
+            assert lifecycle_ack["seq"] == 13
+            assert lifecycle_ack["ack_type"] == "system_command"
+            assert lifecycle_ack["ok"] is True
+            service_result = client.recv_until("service_call_result")
+            assert service_result["seq"] == 13
+            assert service_result["request_type"] == "system_command"
+            assert service_result["command"] == "enable"
+            assert service_result["service"] == "dry-run:lifecycle/enable"
+            assert service_result["ok"] is True
+
+            client.send({
+                "type": "system_command",
+                "protocol_version": 1,
+                "seq": 14,
+                "timestamp_ms": now_ms(),
+                "command": "set_control_mode",
+                "params": {"mode": "arm"},
+            })
+            mode_ack = client.recv_until("ack")
+            assert mode_ack["seq"] == 14
+            assert mode_ack["ack_type"] == "system_command"
+            assert mode_ack["ok"] is True
+            mode_service = client.recv_until("service_call_result")
+            assert mode_service["seq"] == 14
+            assert mode_service["command"] == "set_control_mode"
+            assert mode_service["service"] == "dry-run:/control/arm"
+            assert mode_service["ok"] is True
+
+            client.send({
+                "type": "emergency_stop",
+                "protocol_version": 1,
+                "seq": 15,
                 "timestamp_ms": now_ms(),
                 "params": {"source": "bridge_loopback"},
             })
             ack = client.recv_until("ack")
-            assert ack["seq"] == 13
+            assert ack["seq"] == 15
             assert ack["ack_type"] == "emergency_stop"
             assert ack["ok"] is True
+            emergency_service = client.recv_until("service_call_result")
+            assert emergency_service["seq"] == 15
+            assert emergency_service["command"] == "emergency_stop"
+            assert emergency_service["service"] == "dry-run:/safety/emergency_stop"
+            assert emergency_service["ok"] is True
             emergency = client.recv_until("emergency_state")
             assert emergency["active"] is True
 
             client.send({
                 "type": "operator_input",
                 "protocol_version": 1,
-                "seq": 14,
+                "seq": 16,
                 "timestamp_ms": now_ms(),
                 "ttl_ms": 500,
                 "mode": "vehicle",
@@ -350,7 +396,7 @@ def main() -> None:
 
             state = get_json("/api/state")["state"]
             assert state["emergency_active"] is True
-            assert state["last_operator_seq"] == 14
+            assert state["last_operator_seq"] == 16
             assert state["last_twist"]["linear_x"] == 0.0
 
             cameras_api = get_json("/api/cameras")

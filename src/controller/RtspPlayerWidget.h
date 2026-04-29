@@ -2,13 +2,14 @@
 #define RTSPPLAYERWIDGET_H
 
 #include <QWidget>
-#include <QMediaPlayer>
-#include <QVideoWidget>
 #include <QPushButton>
 #include <QLabel>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QTimer>
+
+class FfmpegRtspDecoder;
+class VideoFrameWidget;
 
 class RtspPlayerWidget : public QWidget
 {
@@ -30,13 +31,21 @@ public slots:
 
 private slots:
     void updateLocalClock();
+    void updateVideoFrame();
+    void onDecoderStarted();
+    void onDecoderStopped();
+    void onDecoderFailed(const QString &message);
 
 private:
     int m_cameraId;
     QString m_rtspUrl;
+    int m_streamWidth = 0;
+    int m_streamHeight = 0;
+    int m_streamFps = 0;
+    bool m_streamOnline = false;
 
-    QMediaPlayer *m_player;
-    QVideoWidget *m_videoWidget;
+    FfmpegRtspDecoder *m_decoder;
+    VideoFrameWidget *m_videoWidget;
     QLabel *m_waitLabel;
     QLabel *m_statusLabel;
     QLabel *m_titleLabel;
@@ -45,6 +54,7 @@ private:
     QPushButton *m_startBtn;
     QPushButton *m_stopBtn;
     QTimer *m_clockTimer;        // 刷新本地时钟的定时器
+    QTimer *m_frameTimer;        // 从解码线程取最新帧的定时器
 };
 
 #endif // RTSPPLAYERWIDGET_H

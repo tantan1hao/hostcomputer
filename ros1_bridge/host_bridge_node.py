@@ -7,11 +7,12 @@ import threading
 from typing import Any, Dict, List, Optional, Tuple
 
 from bridge_core import BridgeCore, BridgeRuntime
-from bridge_protocol import DEFAULT_WATCHDOG_MS, MAX_FRAME_BYTES, PROTOCOL_VERSION
+from bridge_protocol import DEFAULT_WATCHDOG_MS, MAX_FRAME_BYTES, PROTOCOL_VERSION, now_ms
 from bridge_protocol import json_line
 from debug_ui import DebugHttpServer
 from debug_events import EventSink, RingBufferEventSink
 from output_adapters import DryRunOutput, OutputAdapter, RosOutput
+from video_manager import VideoConfigError, VideoManager
 
 DEFAULT_CAMERA_CONFIG = os.path.join(os.path.dirname(__file__), "video_sources.local.yaml")
 
@@ -30,6 +31,10 @@ class HostBridgeServer:
         gripper_max_position: float = 0.044,
         gripper_initial_position: float = 0.022,
         cameras: Optional[List[Dict[str, Any]]] = None,
+        video_manager: Optional[VideoManager] = None,
+        video_autostart: bool = False,
+        video_poll_sec: float = 1.0,
+        joint_runtime_topic: str = "",
         events: Optional[EventSink] = None,
     ) -> None:
         self.host = host
@@ -38,6 +43,11 @@ class HostBridgeServer:
         self.client_lock = threading.Lock()
         self.active_clients: List["BridgeClient"] = []
         self.events = events or RingBufferEventSink()
+        self.video_manager = video_manager
+        self.video_autostart = video_autostart
+        self.video_poll_sec = max(video_poll_sec, 0.1)
+        self.joint_runtime_topic = joint_runtime_topic
+        self.joint_runtime_subscriber = None
         self.core = BridgeCore(
             output,
             watchdog_ms,
@@ -48,27 +58,120 @@ class HostBridgeServer:
             gripper_max_position,
             gripper_initial_position,
             cameras,
+            self.video_manager.camera_infos if self.video_manager else None,
+            self.handle_camera_stream_request if self.video_manager else None,
             self.events,
         )
         self.runtime = BridgeRuntime(self.core, self.broadcast)
 
     def serve_forever(self) -> None:
+        self.start_video_manager()
+        self.start_joint_runtime_forwarder()
         self.runtime.start_watchdog()
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
-            server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            server.bind((self.host, self.port))
-            server.listen(5)
-            print(f"[bridge] listening on {self.host}:{self.port}", flush=True)
-            self.events.emit("tcp", "bridge listening", data={"host": self.host, "port": self.port})
-            while not self.stop_event.is_set():
-                try:
-                    conn, addr = server.accept()
-                except OSError:
-                    break
-                client = BridgeClient(self, conn, addr)
-                with self.client_lock:
-                    self.active_clients.append(client)
-                threading.Thread(target=client.run, daemon=True).start()
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
+                server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                server.bind((self.host, self.port))
+                server.listen(5)
+                print(f"[bridge] listening on {self.host}:{self.port}", flush=True)
+                self.events.emit("tcp", "bridge listening", data={"host": self.host, "port": self.port})
+                while not self.stop_event.is_set():
+                    try:
+                        conn, addr = server.accept()
+                    except OSError:
+                        break
+                    client = BridgeClient(self, conn, addr)
+                    with self.client_lock:
+                        self.active_clients.append(client)
+                    threading.Thread(target=client.run, daemon=True).start()
+        finally:
+            self.stop_video_manager()
+
+    def start_video_manager(self) -> None:
+        if not self.video_manager:
+            return
+        if self.video_autostart:
+            started = self.video_manager.start_enabled()
+            self.events.emit("video", "video autostart completed", data={"count": len(started)})
+        threading.Thread(target=self._video_monitor_loop, daemon=True).start()
+
+    def stop_video_manager(self) -> None:
+        if not self.video_manager:
+            return
+        stopped = self.video_manager.stop_all()
+        self.events.emit("video", "video manager stopped", data={"count": len(stopped)})
+
+    def start_joint_runtime_forwarder(self) -> None:
+        topic = self.joint_runtime_topic.strip()
+        if not topic:
+            return
+        try:
+            import rospy
+            from Eyou_ROS1_Master.msg import JointRuntimeStateArray
+        except Exception as exc:
+            self.events.emit("joint_runtime", "joint runtime forwarder unavailable",
+                             level="warning", data={"error": str(exc)})
+            return
+
+        def callback(msg: Any) -> None:
+            states = []
+            for item in getattr(msg, "states", []):
+                states.append({
+                    "joint_name": str(getattr(item, "joint_name", "")),
+                    "backend": str(getattr(item, "backend", "")),
+                    "lifecycle_state": str(getattr(item, "lifecycle_state", "")),
+                    "online": bool(getattr(item, "online", False)),
+                    "enabled": bool(getattr(item, "enabled", False)),
+                    "fault": bool(getattr(item, "fault", False)),
+                })
+            self.broadcast({
+                "type": "joint_runtime_states",
+                "protocol_version": PROTOCOL_VERSION,
+                "seq": 0,
+                "timestamp_ms": now_ms(),
+                "states": states,
+            })
+
+        self.joint_runtime_subscriber = rospy.Subscriber(
+            topic, JointRuntimeStateArray, callback, queue_size=1
+        )
+        self.events.emit("joint_runtime", "joint runtime forwarder started", data={"topic": topic})
+
+    def _video_monitor_loop(self) -> None:
+        if not self.video_manager:
+            return
+        while not self.stop_event.wait(self.video_poll_sec):
+            for camera in self.video_manager.refresh():
+                self.broadcast(self.core.make_camera_info(camera))
+
+    def handle_camera_stream_request(self, params: Dict[str, Any]) -> Tuple[bool, int, str, Optional[Dict[str, Any]]]:
+        if not self.video_manager:
+            return False, 2400, "video manager unavailable", None
+
+        try:
+            camera_id = int(params.get("camera_id"))
+        except (TypeError, ValueError):
+            return False, 2401, "camera_id must be an integer", None
+
+        action = str(params.get("action", "")).strip().lower()
+        try:
+            if action == "start":
+                camera = self.video_manager.start(camera_id)
+            elif action == "stop":
+                camera = self.video_manager.stop(camera_id)
+            elif action == "restart":
+                camera = self.video_manager.restart(camera_id)
+            else:
+                return False, 2402, f"unsupported camera stream action: {action}", None
+        except KeyError:
+            return False, 2403, f"unknown camera_id: {camera_id}", None
+
+        self.events.emit("video", "camera stream request handled", data={
+            "camera_id": camera_id,
+            "action": action,
+            "online": camera.get("online", False),
+        })
+        return True, 0, f"camera stream {action} accepted", camera
 
     def remove_client(self, client: "BridgeClient") -> None:
         with self.client_lock:
@@ -178,6 +281,17 @@ def parse_camera(value: str) -> Dict[str, Any]:
     }
 
 
+def parse_service_command(value: str) -> Tuple[str, str]:
+    if "=" not in value:
+        raise argparse.ArgumentTypeError("service command must be command=/service/name")
+    command, service = value.split("=", 1)
+    command = command.strip()
+    service = service.strip()
+    if not command or not service:
+        raise argparse.ArgumentTypeError("service command and service name must be non-empty")
+    return command, service
+
+
 def load_cameras_from_yaml(path: str, publish_host_override: str = "") -> List[Dict[str, Any]]:
     try:
         import yaml
@@ -249,6 +363,23 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--servo-topic", default="/servo_server/delta_twist_cmds")
     parser.add_argument("--servo-frame", default="catch_camera")
     parser.add_argument("--gripper-position-topic", default="/arm_control/gripper_position")
+    parser.add_argument(
+        "--hybrid-service-ns",
+        default="/hybrid_motor_hw_node",
+        help="ROS service namespace for lifecycle and joint mode commands",
+    )
+    parser.add_argument(
+        "--service-command",
+        action="append",
+        type=parse_service_command,
+        default=[],
+        metavar="COMMAND=SERVICE",
+        help=(
+            "map a TCP command to a std_srvs/Trigger service; may be repeated. "
+            "SERVICE may use {command}, {mode}, {source}, e.g. "
+            "set_control_mode=/robot/set_{mode}_mode"
+        ),
+    )
     parser.add_argument("--gripper-min-position", type=float, default=0.0)
     parser.add_argument("--gripper-max-position", type=float, default=0.044)
     parser.add_argument("--gripper-initial-position", type=float, default=0.022)
@@ -277,12 +408,31 @@ def build_arg_parser() -> argparse.ArgumentParser:
         type=parse_camera,
         help="camera entry as id,name,rtsp_url; may be repeated",
     )
+    parser.add_argument("--video-config", default="", help="YAML config for direct RTSP video sources")
+    parser.add_argument(
+        "--video-dry-run",
+        action="store_true",
+        help="build video commands and mark streams online without starting ffmpeg",
+    )
+    parser.add_argument(
+        "--video-autostart",
+        action="store_true",
+        help="start enabled direct video sources when the bridge starts",
+    )
+    parser.add_argument("--video-poll-sec", type=float, default=1.0)
+    parser.add_argument(
+        "--joint-runtime-topic",
+        default="/hybrid_motor_hw_node/joint_runtime_states",
+        help="ROS topic to forward as TCP joint_runtime_states when --ros is used; empty disables it",
+    )
     return parser
 
 
 def main() -> None:
     args = build_arg_parser().parse_args()
     events = RingBufferEventSink()
+    service_commands = dict(args.service_command or [])
+    
     cameras = args.camera
     if args.camera_config:
         camera_config = os.path.expanduser(args.camera_config)
@@ -297,10 +447,28 @@ def main() -> None:
             args.cmd_vel_topic,
             args.servo_topic,
             args.gripper_position_topic,
+            args.hybrid_service_ns,
+            service_commands,
             events,
         )
     else:
-        output = DryRunOutput(events)
+        output = DryRunOutput(events, service_commands)
+
+    video_manager: Optional[VideoManager] = None
+    if args.video_config:
+        try:
+            video_manager = VideoManager.from_config_path(
+                args.video_config,
+                dry_run=args.video_dry_run,
+                events=events,
+            )
+            events.emit("video", "video manager configured", data={
+                "config": args.video_config,
+                "dry_run": args.video_dry_run,
+                "sources": len(video_manager.config.direct_sources),
+            })
+        except VideoConfigError as exc:
+            raise SystemExit(f"failed to load video config: {exc}") from exc
 
     server = HostBridgeServer(
         host=args.host,
@@ -314,6 +482,10 @@ def main() -> None:
         gripper_max_position=args.gripper_max_position,
         gripper_initial_position=args.gripper_initial_position,
         cameras=cameras,
+        video_manager=video_manager,
+        video_autostart=args.video_autostart,
+        video_poll_sec=args.video_poll_sec,
+        joint_runtime_topic=args.joint_runtime_topic if not args.dry_run else "",
         events=events,
     )
     if args.debug_ui:

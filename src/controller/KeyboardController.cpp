@@ -1,11 +1,9 @@
 #include "KeyboardController.h"
-#include <QDebug>
 #include <algorithm>
 
 KeyboardController::KeyboardController(QObject *parent)
     : QObject(parent)
     , m_enabled(false)
-    , m_controlMode(0)
 {
     m_sendTimer = new QTimer(this);
     m_sendTimer->setInterval(SEND_INTERVAL_MS);
@@ -71,16 +69,6 @@ void KeyboardController::setEnabled(bool enabled)
 }
 
 bool KeyboardController::isEnabled() const { return m_enabled; }
-
-void KeyboardController::setControlMode(int mode)
-{
-    if (m_controlMode == mode) return;
-    m_controlMode = mode;
-    clearPressedKeys();
-    qDebug() << "[键盘] 控制模式切换:" << (mode == 0 ? "车体" : "机械臂");
-}
-
-int KeyboardController::controlMode() const { return m_controlMode; }
 
 QStringList KeyboardController::pressedKeyNames() const
 {

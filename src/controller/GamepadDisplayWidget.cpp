@@ -10,8 +10,8 @@
 StickVisualWidget::StickVisualWidget(const QString &title, QWidget *parent)
     : QWidget(parent), m_title(title)
 {
-    setMinimumSize(50, 60);
-    setMaximumHeight(100);
+    setMinimumSize(90, 110);
+    setMaximumHeight(160);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     setAttribute(Qt::WA_StyledBackground, false);
     setStyleSheet("background: transparent; border: none;");
@@ -101,8 +101,8 @@ void StickVisualWidget::paintEvent(QPaintEvent *)
 TriggerBarWidget::TriggerBarWidget(const QString &title, QWidget *parent)
     : QWidget(parent), m_title(title)
 {
-    setMinimumSize(60, 24);
-    setMaximumHeight(32);
+    setMinimumSize(80, 34);
+    setMaximumHeight(44);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     setAttribute(Qt::WA_StyledBackground, false);
     setStyleSheet("background: transparent; border: none;");
@@ -170,8 +170,9 @@ GamepadDisplayWidget::GamepadDisplayWidget(QWidget *parent)
     : QWidget(parent)
 {
     auto *mainLayout = new QVBoxLayout(this);
-    mainLayout->setContentsMargins(2, 2, 2, 2);
-    mainLayout->setSpacing(1);
+    mainLayout->setContentsMargins(6, 6, 6, 6);
+    mainLayout->setSpacing(4);
+    setMinimumHeight(220);
 
     // --- 标题 ---
     m_titleLabel = new QLabel("手柄映射", this);
@@ -183,7 +184,7 @@ GamepadDisplayWidget::GamepadDisplayWidget(QWidget *parent)
 
     // --- 摇杆 水平布局 ---
     auto *stickLayout = new QHBoxLayout();
-    stickLayout->setSpacing(2);
+    stickLayout->setSpacing(8);
 
     m_leftStick = new StickVisualWidget("左摇杆", this);
     m_rightStick = new StickVisualWidget("右摇杆", this);
@@ -195,7 +196,7 @@ GamepadDisplayWidget::GamepadDisplayWidget(QWidget *parent)
 
     // --- 扳机 水平布局 ---
     auto *triggerLayout = new QHBoxLayout();
-    triggerLayout->setSpacing(2);
+    triggerLayout->setSpacing(8);
 
     m_ltBar = new TriggerBarWidget("LT", this);
     m_rtBar = new TriggerBarWidget("RT", this);

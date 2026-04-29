@@ -85,6 +85,7 @@ signals:
 
     // 数据接收信号
     void motorStateReceived(const Communication::MotorState &state);
+    void jointRuntimeStatesReceived(const Communication::JointRuntimeStateList &states);
     void co2DataReceived(float ppm);
     void imuDataReceived(float roll, float pitch, float yaw,
                          float accelX, float accelY, float accelZ);
@@ -103,6 +104,7 @@ private slots:
     void onTcpDisconnected();
     void onTcpError(const QString &error);
     void onTcpMotorStateReceived(const Communication::MotorState &state);
+    void onTcpJointRuntimeStatesReceived(const Communication::JointRuntimeStateList &states);
     void onTcpCO2DataReceived(float ppm);
     void onTcpIMUDataReceived(float roll, float pitch, float yaw,
                               float accelX, float accelY, float accelZ);

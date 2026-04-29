@@ -23,11 +23,13 @@ class MainWindow;
 QT_END_NAMESPACE
 
 class QTextEdit;
+class QTabWidget;
+class MotorRuntimeCarouselWidget;
 
 // 控制模式枚举
 enum class ControlMode {
-    Vehicle = 0,  // 车体运动模式 (D-Pad上)
-    Arm = 2       // 机械臂操控模式 (D-Pad下)
+    Vehicle = 0,
+    Arm = 2
 };
 
 class MainWindow : public QMainWindow
@@ -87,10 +89,8 @@ private:
     void formatAndAddCommand(const QString& command);
     void formatAndAddError(const QString& error);
     QString getCurrentTimestamp() const;
+    void applyControlMode(ControlMode mode);
     void triggerEmergencyStop(const QString &source);
-
-    // 模式切换
-    void switchControlMode(ControlMode mode);
 
 private slots:
     // Controller层信号处理
@@ -99,6 +99,7 @@ private slots:
     void onTcpError(const QString &error);
     void onTcpHeartbeatChanged(bool online);
     void onMotorStateReceived(const Communication::MotorState &state);
+    void onJointRuntimeStatesReceived(const Communication::JointRuntimeStateList &states);
     void onCO2DataReceived(float ppm);
     void onIMUDataReceived(float roll, float pitch, float yaw, float accelX, float accelY, float accelZ);
     void onCameraInfoReceived(int cameraId, bool online, const QString &codec,
@@ -129,6 +130,8 @@ private:
 
     // 控制面板
     ControlPanelWidget* m_controlPanel;
+    MotorRuntimeCarouselWidget* m_motorRuntimeWidget = nullptr;
+    QTabWidget* m_logTabs = nullptr;
 
     // 手柄输入驱动
     HandleKey* m_handleKey;
@@ -138,6 +141,7 @@ private:
 
     // 数据显示
     QTextEdit* m_textData = nullptr;
+    QLabel* m_statusErrorLabel = nullptr;
 
     // 状态管理
     bool m_isConnected = false;
@@ -152,11 +156,12 @@ private:
     int m_errorCount = 0;
     qint64 m_lastEmergencyStopMs = 0;
 
-    // 控制模式
+    // 协议兼容字段；普通输入语意由下位机解析
     ControlMode m_controlMode = ControlMode::Vehicle;
     QStringList m_keyboardPressedKeys;
     ControllerState m_latestGamepadState = {};
     bool m_gamepadConnected = false;
+    bool m_gamepadStickEmergencyHeld = false;
 
     // 定时器
     QTimer* m_statusTimer;

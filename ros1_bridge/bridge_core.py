@@ -1,4 +1,5 @@
 import threading
+import time
 from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
 from debug_events import EventSink, NullEventSink
@@ -10,6 +11,7 @@ from output_adapters import OutputAdapter
 class BridgeCore:
     MODE_VEHICLE = "vehicle"
     MODE_ARM = "arm"
+    LIFECYCLE_COMMANDS = {"init", "enable", "disable", "halt", "resume", "recover", "shutdown"}
     MODE_SWITCH_KEYS = {"1", "num_1"}
     EMERGENCY_KEYS = {"space"}
     SPEED_KEY_LEVELS = {
@@ -41,6 +43,8 @@ class BridgeCore:
         gripper_max_position: float = 0.044,
         gripper_initial_position: float = 0.022,
         cameras: Optional[List[Dict[str, Any]]] = None,
+        camera_provider: Optional[Callable[[], List[Dict[str, Any]]]] = None,
+        camera_stream_handler: Optional[Callable[[Dict[str, Any]], Tuple[bool, int, str, Optional[Dict[str, Any]]]]] = None,
         events: Optional[EventSink] = None,
     ) -> None:
         self.output = output
@@ -59,6 +63,8 @@ class BridgeCore:
         self.gripper_min_position = gripper_min_position
         self.gripper_max_position = gripper_max_position
         self.cameras = cameras if cameras is not None else self.default_cameras()
+        self.camera_provider = camera_provider
+        self.camera_stream_handler = camera_stream_handler
         self.state = BridgeState(
             control_mode=self.MODE_VEHICLE,
             gripper_target=self.clamp_gripper(gripper_initial_position),
@@ -114,17 +120,21 @@ class BridgeCore:
                 "system_snapshot",
                 "camera_list_request",
                 "camera_list_response",
+                "camera_stream_request",
                 "emergency_state",
                 "watchdog",
                 "keyboard_base_arm_mapping",
                 "arm_servo_output",
                 "gripper_position_output",
+                "joint_runtime_states",
+                "hybrid_lifecycle_services",
+                "service_call_result",
             ],
             "max_frame_bytes": MAX_FRAME_BYTES,
             "watchdog_ms": self.watchdog_ms,
             "keyboard_mapping": {
                 "mode_switch": "1",
-                "emergency": "space",
+                "emergency": "space or gamepad l3+r3",
                 "speed_levels": {"6": 1, "7": 2, "8": 3, "9": 4, "0": 5},
                 "vehicle": {
                     "linear_x": {"positive": "w", "negative": "s"},
@@ -140,10 +150,11 @@ class BridgeCore:
                     "gripper": {"open": "f", "close": "h"},
                 },
             },
-            "cameras": self.cameras,
+            "cameras": self.current_cameras(),
         }
 
     def make_system_snapshot(self, seq: int) -> Dict[str, Any]:
+        cameras = self.current_cameras()
         with self.state_lock:
             return {
                 "type": "system_snapshot",
@@ -162,7 +173,7 @@ class BridgeCore:
                 "modules": {
                     "base": "online",
                     "arm": "online",
-                    "camera": "online" if any(cam.get("online", False) for cam in self.cameras) else "offline",
+                    "camera": "online" if any(cam.get("online", False) for cam in cameras) else "offline",
                 },
                 "last_error": {
                     "code": self.state.last_error_code,
@@ -182,16 +193,29 @@ class BridgeCore:
             "protocol_version": PROTOCOL_VERSION,
             "seq": seq,
             "timestamp_ms": now_ms(),
-            "cameras": self.cameras,
+            "cameras": self.current_cameras(),
         }
+
+    def make_camera_info(self, camera: Dict[str, Any]) -> Dict[str, Any]:
+        message = dict(camera)
+        message["type"] = "camera_info"
+        message["protocol_version"] = PROTOCOL_VERSION
+        message["seq"] = 0
+        message["timestamp_ms"] = now_ms()
+        return message
 
     def state_snapshot(self) -> Dict[str, Any]:
         with self.state_lock:
             state = self.state.to_dict()
-        state["cameras"] = self.cameras
+        state["cameras"] = self.current_cameras()
         state["watchdog_ms"] = self.watchdog_ms
         state["max_frame_bytes"] = MAX_FRAME_BYTES
         return state
+
+    def current_cameras(self) -> List[Dict[str, Any]]:
+        if self.camera_provider is None:
+            return list(self.cameras)
+        return self.camera_provider()
 
     def make_ack(self, msg: Dict[str, Any], ok: bool = True, code: int = 0, message: str = "ok") -> Dict[str, Any]:
         return {
@@ -231,6 +255,45 @@ class BridgeCore:
             "source": source,
             "message": message,
         }
+
+    def make_service_call_result(
+        self,
+        msg: Dict[str, Any],
+        *,
+        command: str,
+        service: str,
+        ok: bool,
+        code: int,
+        message: str,
+        duration_ms: int,
+    ) -> Dict[str, Any]:
+        return {
+            "type": "service_call_result",
+            "protocol_version": PROTOCOL_VERSION,
+            "seq": int(msg.get("seq", 0) or 0),
+            "timestamp_ms": now_ms(),
+            "request_type": str(msg.get("type", "unknown")),
+            "command": command,
+            "service": service,
+            "ok": ok,
+            "code": code,
+            "message": message,
+            "duration_ms": duration_ms,
+        }
+
+    def call_configured_service_result(
+        self,
+        msg: Dict[str, Any],
+        command: str,
+        params: Optional[Dict[str, Any]] = None,
+    ) -> Optional[Tuple[bool, int, str, str, int]]:
+        service = self.output.command_service_name(command, params)
+        if not service:
+            return None
+        started = time.monotonic()
+        ok, code, message = self.output.call_command_service(command, params)
+        duration_ms = int((time.monotonic() - started) * 1000)
+        return ok, code, message, service, duration_ms
 
     def publish_zero(self, source: str) -> None:
         self.publish_twist(TwistCommand(0.0, 0.0, source))
@@ -284,8 +347,19 @@ class BridgeCore:
             return
 
         if msg_type == "camera_list_request":
-            self.events.emit("camera", "camera list requested", data={"seq": seq, "count": len(self.cameras)})
+            cameras = self.current_cameras()
+            self.events.emit("camera", "camera list requested", data={"seq": seq, "count": len(cameras)})
             yield self.make_camera_list_response(seq)
+            return
+
+        if msg_type == "camera_stream_request":
+            if self.camera_stream_handler is None:
+                yield self.make_ack(msg, False, 2400, "video manager unavailable")
+                return
+            ok, code, message, camera = self.camera_stream_handler(msg.get("params", {}) or {})
+            yield self.make_ack(msg, ok, code, message)
+            if camera is not None:
+                yield self.make_camera_info(camera)
             return
 
         if msg_type == "operator_input":
@@ -294,7 +368,8 @@ class BridgeCore:
             return
 
         if msg_type == "emergency_stop":
-            source = str(msg.get("params", {}).get("source", "unknown"))
+            params = msg.get("params", {}) or {}
+            source = str(params.get("source", "unknown"))
             with self.state_lock:
                 self.state.emergency_active = True
                 self.state.emergency_source = source
@@ -304,7 +379,21 @@ class BridgeCore:
                 "source": source,
             })
             self.publish_zero("emergency_stop")
-            yield self.make_ack(msg, True, 0, "emergency active")
+            service_result = self.call_configured_service_result(msg, "emergency_stop", params)
+            if service_result is None:
+                yield self.make_ack(msg, True, 0, "emergency active")
+            else:
+                ok, code, message, service, duration_ms = service_result
+                yield self.make_ack(msg, ok, code, message)
+                yield self.make_service_call_result(
+                    msg,
+                    command="emergency_stop",
+                    service=service,
+                    ok=ok,
+                    code=code,
+                    message=message,
+                    duration_ms=duration_ms,
+                )
             yield self.make_emergency_state("emergency active")
             return
 
@@ -327,9 +416,30 @@ class BridgeCore:
                 yield self.make_ack(msg, True, 0, "emergency cleared")
                 yield self.make_emergency_state("emergency cleared")
             elif command == "set_control_mode":
-                mode = self.normalize_mode(str(msg.get("params", {}).get("mode", "")))
+                params = msg.get("params", {}) or {}
+                mode = self.normalize_mode(str(params.get("mode", "")))
                 if not mode:
                     yield self.make_ack(msg, False, 2201, "invalid control mode")
+                    return
+                service_result = self.call_configured_service_result(msg, command, params)
+                if service_result is not None:
+                    ok, code, message, service, duration_ms = service_result
+                    if ok:
+                        with self.state_lock:
+                            self.state.control_mode = mode
+                            self.state.last_pressed_keys = []
+                        self.publish_zero("set_control_mode")
+                        self.events.emit("mode", "control mode set", data={"seq": seq, "mode": mode})
+                    yield self.make_ack(msg, ok, code, message)
+                    yield self.make_service_call_result(
+                        msg,
+                        command=command,
+                        service=service,
+                        ok=ok,
+                        code=code,
+                        message=message,
+                        duration_ms=duration_ms,
+                    )
                     return
                 with self.state_lock:
                     self.state.control_mode = mode
@@ -337,6 +447,30 @@ class BridgeCore:
                 self.publish_zero("set_control_mode")
                 self.events.emit("mode", "control mode set", data={"seq": seq, "mode": mode})
                 yield self.make_ack(msg, True, 0, f"control mode set to {mode}")
+            elif command in self.LIFECYCLE_COMMANDS:
+                service = self.output.lifecycle_service_name(command)
+                started = time.monotonic()
+                ok, code, message = self.output.call_lifecycle(command)
+                duration_ms = int((time.monotonic() - started) * 1000)
+                self.events.emit("lifecycle", "lifecycle command handled", data={
+                    "seq": seq,
+                    "command": command,
+                    "service": service,
+                    "ok": ok,
+                    "code": code,
+                    "message": message,
+                    "duration_ms": duration_ms,
+                }, level="info" if ok else "error")
+                yield self.make_ack(msg, ok, code, message)
+                yield self.make_service_call_result(
+                    msg,
+                    command=command,
+                    service=service,
+                    ok=ok,
+                    code=code,
+                    message=message,
+                    duration_ms=duration_ms,
+                )
             else:
                 yield self.make_ack(msg, True, 0, f"system command {command} accepted")
             return
@@ -396,7 +530,7 @@ class BridgeCore:
         if self.has_emergency_input(pressed, current_buttons):
             with self.state_lock:
                 self.state.emergency_active = True
-                self.state.emergency_source = "keyboard_space" if "space" in pressed else "gamepad_a"
+                self.state.emergency_source = "keyboard_space" if "space" in pressed else "gamepad_l3_r3"
                 self.state.watchdog_active = False
             self.publish_zero("operator_input_emergency")
             self.events.emit("emergency", "operator input emergency key accepted", level="warning", data={
@@ -586,7 +720,7 @@ class BridgeCore:
         return {name for name, value in buttons.items() if bool(value)}
 
     def has_emergency_input(self, pressed: Set[str], active_buttons: Set[str]) -> bool:
-        return bool(self.EMERGENCY_KEYS & pressed) or "a" in active_buttons
+        return bool(self.EMERGENCY_KEYS & pressed) or {"l3", "r3"}.issubset(active_buttons)
 
     def apply_mode_and_speed_edges(self, key_edges: Set[str], button_edges: Set[str], seq: int) -> None:
         mode_changed = False

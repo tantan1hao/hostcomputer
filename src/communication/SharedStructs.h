@@ -3,6 +3,8 @@
 
 #include <cstdint>
 #include <array>
+#include <QString>
+#include <QVector>
 
 namespace Communication {
 
@@ -26,6 +28,17 @@ struct MotorState {
     uint8_t executor_flags = 0;                   // 执行器标志位
     uint8_t reserved = 0;                         // 保留字节
 };
+
+struct JointRuntimeState {
+    QString jointName;
+    QString backend;
+    QString lifecycleState;
+    bool online = false;
+    bool enabled = false;
+    bool fault = false;
+};
+
+using JointRuntimeStateList = QVector<JointRuntimeState>;
 
 /**
  * @brief PC发送给下位机的控制命令 (通过TCP JSON发送)

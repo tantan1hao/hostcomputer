@@ -80,6 +80,7 @@ signals:
 
     // 数据接收信号
     void motorStateReceived(const MotorState &motorState);
+    void jointRuntimeStatesReceived(const JointRuntimeStateList &states);
     void jointDataReceived(int jointId, float position, float current, float torque);
     void systemStatusReceived(const QJsonObject &status);
     void rawMessageReceived(const QByteArray &message);
@@ -137,6 +138,7 @@ private:
     void trimExpiredHeartbeats(qint64 nowMs);
     void processReceivedData();
     MotorState parseMotorState(const QJsonObject &json);
+    JointRuntimeStateList parseJointRuntimeStates(const QJsonObject &json);
     void setHeartbeatOnline(bool online);
     void emitStatsUpdate();
 

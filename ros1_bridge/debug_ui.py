@@ -101,7 +101,7 @@ class DebugHttpServer:
                 elif parsed.path == "/api/cameras":
                     self._send_json({
                         "timestamp_ms": now_ms(),
-                        "cameras": server.core.cameras,
+                        "cameras": server.core.current_cameras(),
                     })
                 else:
                     self.send_error(404)

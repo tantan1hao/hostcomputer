@@ -41,8 +41,13 @@
       <property name="maximumSize">
        <size>
         <width>16777215</width>
-        <height>80</height>
+        <height>48</height>
        </size>
+      </property>
+      <property name="styleSheet">
+       <string>QFrame#frame_status { background: #f8fafc; border: 1px solid #dbe3ef; border-radius: 4px; }
+QLabel { color: #334155; font-size: 12px; }
+QPushButton { min-height: 26px; padding: 2px 10px; }</string>
       </property>
       <property name="frameShape">
        <enum>QFrame::Shape::StyledPanel</enum>
@@ -56,8 +61,8 @@
          <property name="text">
           <string>连接状态:</string>
          </property>
-        </widget>
-       </item>
+     </widget>
+    </item>
        <item>
         <widget class="QLabel" name="label_connection_value">
          <property name="styleSheet">
@@ -129,6 +134,12 @@
        </item>
        <item>
         <widget class="QLabel" name="label_cpu_value">
+         <property name="minimumSize">
+          <size>
+           <width>320</width>
+           <height>0</height>
+          </size>
+         </property>
          <property name="text">
           <string>0%</string>
          </property>
@@ -196,6 +207,16 @@
         </widget>
        </item>
        <item>
+        <widget class="QLabel" name="label_status_error_count">
+         <property name="styleSheet">
+          <string>color: #b91c1c; font-weight: 700;</string>
+         </property>
+         <property name="text">
+          <string>错误: 0</string>
+         </property>
+        </widget>
+       </item>
+       <item>
         <spacer name="horizontalSpacer_status">
          <property name="orientation">
           <enum>Qt::Orientation::Horizontal</enum>
@@ -212,14 +233,14 @@
         <widget class="QPushButton" name="btn_emergency_stop">
          <property name="minimumSize">
           <size>
-           <width>120</width>
-           <height>50</height>
+           <width>96</width>
+           <height>32</height>
           </size>
          </property>
          <property name="maximumSize">
           <size>
-           <width>120</width>
-           <height>50</height>
+           <width>96</width>
+           <height>32</height>
           </size>
          </property>
          <property name="font">
@@ -252,174 +273,418 @@ QPushButton:pressed {
      </widget>
     </item>
     <item>
-     <layout class="QHBoxLayout" name="horizontalLayout_main">
-      <property name="spacing">
-       <number>5</number>
+     <widget class="QSplitter" name="splitter_main">
+      <property name="childrenCollapsible">
+       <bool>false</bool>
       </property>
-      <item>
-       <widget class="QGroupBox" name="group_cameras">
-        <property name="minimumSize">
-         <size>
-          <width>1200</width>
-          <height>600</height>
-         </size>
-        </property>
-        <property name="title">
-         <string>相机画面</string>
-        </property>
-        <layout class="QVBoxLayout" name="verticalLayout_cameras"/>
-       </widget>
-      </item>
-      <item>
-       <layout class="QVBoxLayout" name="verticalLayout_right">
+      <property name="handleWidth">
+       <number>8</number>
+      </property>
+      <property name="orientation">
+       <enum>Qt::Orientation::Horizontal</enum>
+      </property>
+      <widget class="QWidget" name="widget_left_workspace" native="true">
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+         <horstretch>5</horstretch>
+         <verstretch>0</verstretch>
+        </sizepolicy>
+       </property>
+       <layout class="QVBoxLayout" name="verticalLayout_left_workspace">
         <property name="spacing">
          <number>5</number>
         </property>
+        <property name="leftMargin">
+         <number>0</number>
+        </property>
+        <property name="topMargin">
+         <number>0</number>
+        </property>
+        <property name="rightMargin">
+         <number>0</number>
+        </property>
+        <property name="bottomMargin">
+         <number>0</number>
+        </property>
         <item>
-         <layout class="QHBoxLayout" name="horizontalLayout_model_gamepad">
-          <property name="spacing">
-           <number>5</number>
+         <widget class="QGroupBox" name="group_cameras">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+            <horstretch>0</horstretch>
+            <verstretch>1</verstretch>
+           </sizepolicy>
           </property>
-          <item>
-           <widget class="QGroupBox" name="group_car_model">
-            <property name="title">
-             <string>小车姿态模型</string>
-            </property>
-            <layout class="QVBoxLayout" name="verticalLayout_car_model">
-             <item>
-              <widget class="QWidget" name="CarWidget" native="true"/>
-             </item>
-            </layout>
-           </widget>
-          </item>
-         </layout>
+          <property name="minimumSize">
+           <size>
+            <width>900</width>
+            <height>420</height>
+           </size>
+          </property>
+          <property name="title">
+           <string>视频与环境遥测</string>
+          </property>
+          <layout class="QVBoxLayout" name="verticalLayout_cameras">
+           <item>
+            <widget class="CameraGridWidget" name="cameraGridWidget" native="true"/>
+           </item>
+          </layout>
+         </widget>
         </item>
         <item>
-         <layout class="QHBoxLayout" name="horizontalLayout_logs">
-          <property name="spacing">
-           <number>5</number>
+         <widget class="QTabWidget" name="logTabs">
+          <property name="minimumSize">
+           <size>
+            <width>0</width>
+            <height>155</height>
+           </size>
           </property>
-          <item>
-           <widget class="QGroupBox" name="group_commands">
-            <property name="maximumSize">
-             <size>
-              <width>16777215</width>
-              <height>650</height>
-             </size>
-            </property>
-            <property name="title">
-             <string>下位机指令</string>
-            </property>
-            <layout class="QVBoxLayout" name="verticalLayout_commands">
-             <item>
-              <widget class="QTextEdit" name="text_commands">
-               <property name="styleSheet">
-                <string>font-family: 'Consolas', 'Courier New', monospace; font-size: 14px;</string>
-               </property>
-               <property name="readOnly">
-                <bool>true</bool>
-               </property>
-              </widget>
-             </item>
-             <item>
-              <layout class="QHBoxLayout" name="horizontalLayout_commands_control">
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>210</height>
+           </size>
+          </property>
+          <property name="currentIndex">
+           <number>0</number>
+          </property>
+          <widget class="QWidget" name="tab_commands">
+           <attribute name="title">
+            <string>指令</string>
+           </attribute>
+           <layout class="QVBoxLayout" name="verticalLayout_tab_commands">
+            <item>
+             <widget class="QGroupBox" name="group_commands">
+              <property name="title">
+               <string>指令日志</string>
+              </property>
+              <layout class="QVBoxLayout" name="verticalLayout_commands">
                <item>
-                <widget class="QPushButton" name="btn_clear_commands">
-                 <property name="text">
-                  <string>清空</string>
+                <widget class="QTextEdit" name="text_commands">
+                 <property name="styleSheet">
+                  <string>font-family: 'Consolas', 'Courier New', monospace; font-size: 14px;</string>
                  </property>
-                </widget>
-               </item>
-               <item>
-                <widget class="QCheckBox" name="checkbox_auto_scroll">
-                 <property name="text">
-                  <string>自动滚动</string>
-                 </property>
-                 <property name="checked">
+                 <property name="readOnly">
                   <bool>true</bool>
                  </property>
                 </widget>
                </item>
                <item>
-                <spacer name="horizontalSpacer_commands">
-                 <property name="orientation">
-                  <enum>Qt::Orientation::Horizontal</enum>
-                 </property>
-                 <property name="sizeHint" stdset="0">
-                  <size>
-                   <width>40</width>
-                   <height>20</height>
-                  </size>
-                 </property>
-                </spacer>
+                <layout class="QHBoxLayout" name="horizontalLayout_commands_control">
+                 <item>
+                  <widget class="QPushButton" name="btn_clear_commands">
+                   <property name="text">
+                    <string>清空</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QCheckBox" name="checkbox_auto_scroll">
+                   <property name="text">
+                    <string>自动滚动</string>
+                   </property>
+                   <property name="checked">
+                    <bool>true</bool>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <spacer name="horizontalSpacer_commands">
+                   <property name="orientation">
+                    <enum>Qt::Orientation::Horizontal</enum>
+                   </property>
+                   <property name="sizeHint" stdset="0">
+                    <size>
+                     <width>40</width>
+                     <height>20</height>
+                    </size>
+                   </property>
+                  </spacer>
+                 </item>
+                </layout>
                </item>
               </layout>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+          <widget class="QWidget" name="tab_errors">
+           <attribute name="title">
+            <string>错误</string>
+           </attribute>
+           <layout class="QVBoxLayout" name="verticalLayout_tab_errors">
+            <item>
+             <widget class="QGroupBox" name="group_errors">
+              <property name="title">
+               <string>错误日志</string>
+              </property>
+              <layout class="QVBoxLayout" name="verticalLayout_errors">
+               <item>
+                <widget class="QTextEdit" name="text_errors">
+                 <property name="styleSheet">
+                  <string>font-family: 'Consolas', 'Courier New', monospace; font-size: 14px; background-color: #fff8f8;</string>
+                 </property>
+                 <property name="readOnly">
+                  <bool>true</bool>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <layout class="QHBoxLayout" name="horizontalLayout_errors_control">
+                 <item>
+                  <widget class="QPushButton" name="btn_clear_errors">
+                   <property name="text">
+                    <string>清空</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QLabel" name="label_error_count">
+                   <property name="text">
+                    <string>错误: 0</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <spacer name="horizontalSpacer_errors">
+                   <property name="orientation">
+                    <enum>Qt::Orientation::Horizontal</enum>
+                   </property>
+                   <property name="sizeHint" stdset="0">
+                    <size>
+                     <width>40</width>
+                     <height>20</height>
+                    </size>
+                   </property>
+                  </spacer>
+                 </item>
+                </layout>
+               </item>
+              </layout>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="widget_right_panel" native="true">
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
+         <horstretch>2</horstretch>
+         <verstretch>0</verstretch>
+        </sizepolicy>
+       </property>
+       <property name="minimumSize">
+        <size>
+         <width>420</width>
+         <height>0</height>
+        </size>
+       </property>
+       <layout class="QVBoxLayout" name="verticalLayout_right">
+        <property name="spacing">
+         <number>5</number>
+        </property>
+        <property name="leftMargin">
+         <number>0</number>
+        </property>
+        <property name="topMargin">
+         <number>0</number>
+        </property>
+        <property name="rightMargin">
+         <number>0</number>
+        </property>
+        <property name="bottomMargin">
+         <number>0</number>
+        </property>
+        <item>
+         <widget class="MotorRuntimeCarouselWidget" name="motorRuntimeWidget" native="true">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+            <horstretch>0</horstretch>
+            <verstretch>1</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>0</width>
+            <height>210</height>
+           </size>
+          </property>
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>16777215</height>
+           </size>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QGroupBox" name="group_lifecycle_control">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+            <horstretch>0</horstretch>
+            <verstretch>1</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>16777215</height>
+           </size>
+          </property>
+          <property name="title">
+           <string>生命周期与控制域</string>
+          </property>
+          <layout class="QVBoxLayout" name="verticalLayout_lifecycle_control">
+           <property name="leftMargin">
+            <number>8</number>
+           </property>
+           <property name="topMargin">
+            <number>8</number>
+           </property>
+           <property name="rightMargin">
+            <number>8</number>
+           </property>
+           <property name="bottomMargin">
+            <number>8</number>
+           </property>
+           <item>
+            <widget class="QLabel" name="label_lifecycle_hint">
+             <property name="styleSheet">
+              <string>color: #64748b; font-weight: 600;</string>
+             </property>
+             <property name="text">
+              <string>Init → Armed → Running → Halt / Fault</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <layout class="QGridLayout" name="gridLayout_lifecycle_buttons">
+             <property name="horizontalSpacing">
+              <number>6</number>
+             </property>
+             <property name="verticalSpacing">
+              <number>6</number>
+             </property>
+             <item row="0" column="0">
+              <widget class="QPushButton" name="btn_lifecycle_init">
+               <property name="text">
+                <string>init</string>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="1">
+              <widget class="QPushButton" name="btn_lifecycle_enable">
+               <property name="text">
+                <string>enable</string>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="2">
+              <widget class="QPushButton" name="btn_lifecycle_disable">
+               <property name="text">
+                <string>disable</string>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="3">
+              <widget class="QPushButton" name="btn_lifecycle_halt">
+               <property name="text">
+                <string>halt</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="0">
+              <widget class="QPushButton" name="btn_lifecycle_resume">
+               <property name="text">
+                <string>resume</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="1">
+              <widget class="QPushButton" name="btn_lifecycle_recover">
+               <property name="text">
+                <string>recover</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="2">
+              <widget class="QPushButton" name="btn_lifecycle_shutdown">
+               <property name="styleSheet">
+                <string>color: #b91c1c; font-weight: 700;</string>
+               </property>
+               <property name="text">
+                <string>shutdown</string>
+               </property>
+              </widget>
              </item>
             </layout>
-           </widget>
-          </item>
-          <item>
-           <widget class="QGroupBox" name="group_errors">
-            <property name="maximumSize">
-             <size>
-              <width>16777215</width>
-              <height>650</height>
-             </size>
-            </property>
-            <property name="title">
-             <string>系统消息</string>
-            </property>
-            <layout class="QVBoxLayout" name="verticalLayout_errors">
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="horizontalLayout_control_domain">
              <item>
-              <widget class="QTextEdit" name="text_errors">
-               <property name="styleSheet">
-                <string>font-family: 'Consolas', 'Courier New', monospace; font-size: 14px; background-color: #fff8f8;</string>
-               </property>
-               <property name="readOnly">
-                <bool>true</bool>
+              <widget class="QPushButton" name="btn_mode_vehicle">
+               <property name="text">
+                <string>底盘</string>
                </property>
               </widget>
              </item>
              <item>
-              <layout class="QHBoxLayout" name="horizontalLayout_errors_control">
-               <item>
-                <widget class="QPushButton" name="btn_clear_errors">
-                 <property name="text">
-                  <string>清空</string>
-                 </property>
-                </widget>
-               </item>
-               <item>
-                <widget class="QLabel" name="label_error_count">
-                 <property name="text">
-                  <string>错误: 0</string>
-                 </property>
-                </widget>
-               </item>
-               <item>
-                <spacer name="horizontalSpacer_errors">
-                 <property name="orientation">
-                  <enum>Qt::Orientation::Horizontal</enum>
-                 </property>
-                 <property name="sizeHint" stdset="0">
-                  <size>
-                   <width>40</width>
-                   <height>20</height>
-                  </size>
-                 </property>
-                </spacer>
-               </item>
-              </layout>
+              <widget class="QPushButton" name="btn_mode_arm">
+               <property name="text">
+                <string>机械臂</string>
+               </property>
+              </widget>
              </item>
             </layout>
-           </widget>
-          </item>
-         </layout>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <widget class="QGroupBox" name="group_car_model">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+            <horstretch>0</horstretch>
+            <verstretch>1</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>0</width>
+            <height>320</height>
+           </size>
+          </property>
+          <property name="title">
+           <string>姿态</string>
+          </property>
+          <layout class="QVBoxLayout" name="verticalLayout_car_model">
+           <item>
+            <widget class="RobotAttitudeWidget" name="robotAttitudeWidget" native="true"/>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <widget class="ControlPanelWidget" name="controlPanelWidget" native="true">
+          <property name="minimumSize">
+           <size>
+            <width>0</width>
+            <height>290</height>
+           </size>
+          </property>
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>310</height>
+           </size>
+          </property>
+         </widget>
         </item>
        </layout>
-      </item>
-     </layout>
-    </item>
+      </widget>
+     </widget>    </item>
    </layout>
   </widget>
   <widget class="QMenuBar" name="menubar">
@@ -494,6 +759,32 @@ QPushButton:pressed {
    </property>
   </action>
  </widget>
+ <customwidgets>
+  <customwidget>
+   <class>CameraGridWidget</class>
+   <extends>QWidget</extends>
+   <header>CameraGridWidget.h</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>MotorRuntimeCarouselWidget</class>
+   <extends>QWidget</extends>
+   <header>MotorRuntimeCarouselWidget.h</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>RobotAttitudeWidget</class>
+   <extends>QWidget</extends>
+   <header>RobotAttitudeWidget.h</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>ControlPanelWidget</class>
+   <extends>QWidget</extends>
+   <header>ControlPanelWidget.h</header>
+   <container>1</container>
+  </customwidget>
+ </customwidgets>
  <resources/>
  <connections/>
 </ui>

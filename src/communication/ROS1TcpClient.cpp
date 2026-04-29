@@ -860,10 +860,33 @@ bool ROS1TcpClient::validateIncomingMessage(const QJsonObject &message,
             *errorMessage = QStringLiteral("protocol_error missing code or message");
             return false;
         }
+    } else if (type == QStringLiteral("service_call_result")) {
+        if (!message.value(QStringLiteral("request_type")).isString()
+            || !message.value(QStringLiteral("command")).isString()
+            || !message.value(QStringLiteral("service")).isString()
+            || !message.value(QStringLiteral("ok")).isBool()
+            || !isIntegerJsonValue(message.value(QStringLiteral("code")))
+            || !message.value(QStringLiteral("message")).isString()) {
+            *errorCode = 2165;
+            *errorMessage = QStringLiteral("service_call_result missing required fields");
+            return false;
+        }
+        if (message.contains(QStringLiteral("duration_ms"))
+            && !isIntegerJsonValue(message.value(QStringLiteral("duration_ms")))) {
+            *errorCode = 2166;
+            *errorMessage = QStringLiteral("service_call_result invalid duration_ms");
+            return false;
+        }
     } else if (type == QStringLiteral("motor_state")) {
         if (!message.value(QStringLiteral("joints")).isArray()) {
             *errorCode = 2170;
             *errorMessage = QStringLiteral("motor_state missing joints array");
+            return false;
+        }
+    } else if (type == QStringLiteral("joint_runtime_states")) {
+        if (!message.value(QStringLiteral("states")).isArray()) {
+            *errorCode = 2175;
+            *errorMessage = QStringLiteral("joint_runtime_states missing states array");
             return false;
         }
     } else if (type == QStringLiteral("co2_data")) {
@@ -1091,11 +1114,14 @@ void ROS1TcpClient::processReceivedData()
             processCameraListResponse(msg);
         } else if (msgType == "system_snapshot" || msgType == "param_response"
                    || msgType == "emergency_state" || msgType == "protocol_error"
+                   || msgType == "service_call_result"
                    || msgType == "hello" || msgType == "capabilities") {
             emit systemStatusReceived(msg);
         } else if (msgType == "motor_state") {
             MotorState state = parseMotorState(msg);
             emit motorStateReceived(state);
+        } else if (msgType == "joint_runtime_states") {
+            emit jointRuntimeStatesReceived(parseJointRuntimeStates(msg));
         } else if (msgType == "joint_data") {
             int jointId = msg["joint_id"].toInt();
             float position = msg["position"].toDouble();
@@ -1142,6 +1168,31 @@ MotorState ROS1TcpClient::parseMotorState(const QJsonObject &json)
     state.reserved = static_cast<uint8_t>(json["reserved"].toInt(0));
 
     return state;
+}
+
+JointRuntimeStateList ROS1TcpClient::parseJointRuntimeStates(const QJsonObject &json)
+{
+    JointRuntimeStateList states;
+    const QJsonArray statesArray = json.value(QStringLiteral("states")).toArray();
+    states.reserve(statesArray.size());
+
+    for (const QJsonValue &value : statesArray) {
+        if (!value.isObject()) {
+            continue;
+        }
+
+        const QJsonObject object = value.toObject();
+        JointRuntimeState state;
+        state.jointName = object.value(QStringLiteral("joint_name")).toString();
+        state.backend = object.value(QStringLiteral("backend")).toString();
+        state.lifecycleState = object.value(QStringLiteral("lifecycle_state")).toString();
+        state.online = object.value(QStringLiteral("online")).toBool(false);
+        state.enabled = object.value(QStringLiteral("enabled")).toBool(false);
+        state.fault = object.value(QStringLiteral("fault")).toBool(false);
+        states.append(state);
+    }
+
+    return states;
 }
 
 void ROS1TcpClient::emitStatsUpdate()
