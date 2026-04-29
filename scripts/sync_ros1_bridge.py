@@ -21,7 +21,7 @@ SOURCE_SEARCH_ROOT = PROJECT_DIR.parent
 # 如果不改，脚本会直接报错，避免误复制到错误位置。
 # ============================================================
 DEFAULT_TARGET_PARENT_DIR = Path("__CHANGE_ME_ROS_WORKSPACE_SRC__")
-TARGET_PARENT_DIR = DEFAULT_TARGET_PARENT_DIR
+TARGET_PARENT_DIR = Path("~/Robot24_catkin_ws/src")
 
 SKIP_DIR_NAMES = {
     ".cache",
