@@ -18,7 +18,7 @@
   <arg name="video_manager_extra_args" default="" />
 
   <arg name="rtsp_port" default="8554" />
-  <arg name="start_mediamtx" default="true" />
+  <arg name="start_mediamtx" default="false" />
   <arg name="mediamtx_bin" default="mediamtx" />
   <arg name="mediamtx_extra_args" default="" />
   <arg name="bridge_mode" default="--ros" />
