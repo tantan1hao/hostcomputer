@@ -18,6 +18,7 @@ direct_sources:
     fps: 30
     codec: h264
     bitrate_kbps: 2500
+    crop_aspect: "4:3"
     rtsp_path: front_raw
     enabled: true
 

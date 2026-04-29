@@ -3,7 +3,7 @@ import shlex
 import subprocess
 import threading
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from bridge_protocol import now_ms
 from debug_events import EventSink, NullEventSink
@@ -50,6 +50,8 @@ class DirectVideoSource:
     enabled: bool = True
     slot_hint: Optional[int] = None
     ffmpeg_path: str = "ffmpeg"
+    crop_aspect: str = ""
+    video_filter: str = ""
     extra_input_args: List[str] = field(default_factory=list)
     extra_output_args: List[str] = field(default_factory=list)
 
@@ -59,12 +61,19 @@ class DirectVideoSource:
         if self.slot_hint is None:
             self.slot_hint = self.camera_id
 
+    def output_size(self) -> Tuple[int, int]:
+        crop = crop_dimensions_for_aspect(self.width, self.height, self.crop_aspect)
+        if crop is None:
+            return self.width, self.height
+        return crop[0], crop[1]
+
     def camera_info(
         self,
         rtsp: RtspConfig,
         online: bool = False,
         last_error: str = "",
     ) -> Dict[str, Any]:
+        output_width, output_height = self.output_size()
         return {
             "camera_id": self.camera_id,
             "source_id": self.source_id,
@@ -75,11 +84,15 @@ class DirectVideoSource:
             "rtsp_url": rtsp.public_url(self.rtsp_path) if online else "",
             "rtsp_transport": rtsp.transport,
             "codec": self.codec,
-            "width": self.width,
-            "height": self.height,
+            "width": output_width,
+            "height": output_height,
+            "source_width": self.width,
+            "source_height": self.height,
             "fps": self.fps,
             "bitrate_kbps": self.bitrate_kbps if online else 0,
             "profile": "low_latency",
+            "crop_aspect": self.crop_aspect,
+            "video_filter": self.video_filter,
             "last_error": last_error,
         }
 
@@ -262,12 +275,24 @@ class VideoManager:
         ]
         command += list(source.extra_input_args)
         command += ["-i", source.device, "-an"]
+        filters = self._ffmpeg_video_filters(source)
+        if filters:
+            command += ["-vf", ",".join(filters)]
         command += self._ffmpeg_codec_args(source)
         if self.config.rtsp.transport:
             command += ["-rtsp_transport", self.config.rtsp.transport]
         command += list(source.extra_output_args)
         command += ["-f", "rtsp", output_url]
         return command
+
+    def _ffmpeg_video_filters(self, source: DirectVideoSource) -> List[str]:
+        filters: List[str] = []
+        crop_filter = crop_filter_for_aspect(source.width, source.height, source.crop_aspect)
+        if crop_filter:
+            filters.append(crop_filter)
+        if source.video_filter:
+            filters.append(source.video_filter)
+        return filters
 
     def _ffmpeg_codec_args(self, source: DirectVideoSource) -> List[str]:
         codec = source.codec.lower()
@@ -382,6 +407,8 @@ def parse_direct_source(item: Any, index: int) -> DirectVideoSource:
         rtsp_path=_required_str(item, "rtsp_path"),
         enabled=_bool_value(item, "enabled", default=True),
         ffmpeg_path=_required_str(item, "ffmpeg_path", default="ffmpeg"),
+        crop_aspect=_optional_aspect(item, "crop_aspect"),
+        video_filter=_optional_str(item, "video_filter"),
         extra_input_args=_string_list(item, "extra_input_args"),
         extra_output_args=_string_list(item, "extra_output_args"),
     )
@@ -392,6 +419,10 @@ def parse_direct_source(item: Any, index: int) -> DirectVideoSource:
         )
     if "/" in source.rtsp_path.strip("/"):
         raise VideoConfigError(f"direct_sources[{index}].rtsp_path must be a single path segment")
+    if source.codec.lower() in ("copy", "passthrough") and (source.crop_aspect or source.video_filter):
+        raise VideoConfigError(
+            f"direct_sources[{index}] cannot use codec={source.codec!r} with video filters"
+        )
     return source
 
 
@@ -422,6 +453,74 @@ def _required_str(data: Dict[str, Any], key: str, default: Optional[str] = None)
     if not isinstance(value, str) or not value.strip():
         raise VideoConfigError(f"{key} must be a non-empty string")
     return value.strip()
+
+
+def _optional_str(data: Dict[str, Any], key: str) -> str:
+    value = data.get(key, "")
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise VideoConfigError(f"{key} must be a string")
+    return value.strip()
+
+
+def _optional_aspect(data: Dict[str, Any], key: str) -> str:
+    aspect = _optional_str(data, key)
+    if not aspect:
+        return ""
+    parse_aspect_ratio(aspect)
+    return aspect
+
+
+def parse_aspect_ratio(aspect: str) -> float:
+    normalized = aspect.strip().lower().replace("：", ":")
+    if ":" in normalized:
+        left, right = normalized.split(":", 1)
+    elif "/" in normalized:
+        left, right = normalized.split("/", 1)
+    else:
+        raise VideoConfigError("crop_aspect must be formatted like 4:3 or 16:9")
+    try:
+        width = float(left)
+        height = float(right)
+    except ValueError as exc:
+        raise VideoConfigError("crop_aspect contains non-numeric values") from exc
+    if width <= 0.0 or height <= 0.0:
+        raise VideoConfigError("crop_aspect values must be positive")
+    return width / height
+
+
+def crop_filter_for_aspect(width: int, height: int, aspect: str) -> str:
+    crop = crop_dimensions_for_aspect(width, height, aspect)
+    if crop is None:
+        return ""
+    crop_w, crop_h, x, y = crop
+    return f"crop={crop_w}:{crop_h}:{x}:{y}"
+
+
+def crop_dimensions_for_aspect(width: int, height: int, aspect: str) -> Optional[Tuple[int, int, int, int]]:
+    if not aspect:
+        return None
+
+    target = parse_aspect_ratio(aspect)
+    current = width / height
+    if abs(current - target) < 0.001:
+        return None
+
+    if current > target:
+        crop_h = height
+        crop_w = int(crop_h * target)
+    else:
+        crop_w = width
+        crop_h = int(crop_w / target)
+
+    crop_w = max(2, crop_w - crop_w % 2)
+    crop_h = max(2, crop_h - crop_h % 2)
+    x = max(0, (width - crop_w) // 2)
+    y = max(0, (height - crop_h) // 2)
+    x -= x % 2
+    y -= y % 2
+    return crop_w, crop_h, x, y
 
 
 def _rtsp_transport(data: Dict[str, Any]) -> str:

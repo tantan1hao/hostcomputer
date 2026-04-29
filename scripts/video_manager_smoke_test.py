@@ -15,7 +15,7 @@ HOST = "127.0.0.1"
 PORT = int(os.getenv("VIDEO_MANAGER_TEST_PORT", "19194"))
 
 sys.path.insert(0, os.path.join(ROOT, "ros1_bridge"))
-from video_manager import VideoManager, load_video_config  # noqa: E402
+from video_manager import VideoManager, crop_filter_for_aspect, load_video_config  # noqa: E402
 
 
 class JsonLineClient:
@@ -85,6 +85,8 @@ def test_config_and_runner() -> None:
     assert cfg.rtsp.host == "192.168.1.50"
     assert cfg.rtsp.transport == "tcp"
     assert len(cfg.direct_sources) == 2
+    assert cfg.direct_sources[0].crop_aspect == "4:3"
+    assert crop_filter_for_aspect(1280, 720, "4:3") == "crop=960:720:160:0"
 
     manager = VideoManager(cfg, dry_run=True)
     started = manager.start(0)
@@ -92,6 +94,12 @@ def test_config_and_runner() -> None:
     assert started["camera_id"] == 0
     assert started["rtsp_url"] == "rtsp://192.168.1.50:8554/front_raw"
     assert started["rtsp_transport"] == "tcp"
+    assert started["width"] == 960
+    assert started["height"] == 720
+    assert started["source_width"] == 1280
+    assert started["source_height"] == 720
+    assert started["crop_aspect"] == "4:3"
+    assert "-vf crop=960:720:160:0" in started["command"]
     assert "-pix_fmt yuv420p" in started["command"]
     assert "-profile:v baseline" in started["command"]
     assert "-rtsp_transport tcp" in started["command"]
