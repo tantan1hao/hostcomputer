@@ -2,6 +2,7 @@
 import argparse
 import json
 import os
+import signal
 import socket
 import sys
 import threading
@@ -77,11 +78,14 @@ class HostBridgeServer:
                 server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 server.bind((self.host, self.port))
                 server.listen(5)
+                server.settimeout(0.5)
                 print(f"[bridge] listening on {self.host}:{self.port}", flush=True)
                 self.events.emit("tcp", "bridge listening", data={"host": self.host, "port": self.port})
                 while not self.stop_event.is_set():
                     try:
                         conn, addr = server.accept()
+                    except socket.timeout:
+                        continue
                     except OSError:
                         break
                     client = BridgeClient(self, conn, addr)
@@ -517,6 +521,14 @@ def main() -> None:
     )
     if args.debug_ui:
         DebugHttpServer(args.debug_host, args.debug_port, server.core, events).start()
+
+    def handle_signal(signum: int, frame: Any) -> None:
+        del signum, frame
+        server.stop_event.set()
+        server.runtime.stop_event.set()
+
+    signal.signal(signal.SIGTERM, handle_signal)
+    signal.signal(signal.SIGINT, handle_signal)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

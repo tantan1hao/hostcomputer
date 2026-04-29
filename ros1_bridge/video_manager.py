@@ -76,6 +76,7 @@ class DirectVideoSource:
             self.source_id = f"camera_{self.camera_id}"
         if self.slot_hint is None:
             self.slot_hint = self.camera_id
+        self.input_format = normalize_v4l2_input_format(self.input_format)
 
     def output_size(self) -> Tuple[int, int]:
         if self.width and self.height:
@@ -361,7 +362,7 @@ class VideoManager:
             "v4l2",
         ]
         if source.input_format:
-            command += ["-input_format", source.input_format]
+            command += ["-input_format", normalize_v4l2_input_format(source.input_format)]
         command += [
             "-video_size",
             f"{source.input_width}x{source.input_height}",
@@ -483,6 +484,21 @@ def load_video_config(path: str) -> VideoConfig:
     if not isinstance(data, dict):
         raise VideoConfigError("video config root must be a mapping")
     return parse_video_config(data)
+
+
+def normalize_v4l2_input_format(input_format: str) -> str:
+    normalized = input_format.strip()
+    aliases = {
+        "mjpg": "mjpeg",
+        "mjpe": "mjpeg",
+        "jpeg": "mjpeg",
+        "yuyv": "yuyv422",
+        "yuy2": "yuyv422",
+        "h264": "h264",
+        "h265": "hevc",
+        "hevc": "hevc",
+    }
+    return aliases.get(normalized.lower(), normalized)
 
 
 def is_rtsp_listening(port: int) -> bool:

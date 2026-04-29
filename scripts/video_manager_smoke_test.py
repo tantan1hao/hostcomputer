@@ -18,7 +18,12 @@ PORT = int(os.getenv("VIDEO_MANAGER_TEST_PORT", "19194"))
 MANAGER_PORT = int(os.getenv("VIDEO_MANAGER_NODE_TEST_PORT", "19195"))
 
 sys.path.insert(0, os.path.join(ROOT, "ros1_bridge"))
-from video_manager import VideoManager, crop_filter_for_aspect, load_video_config  # noqa: E402
+from video_manager import (  # noqa: E402
+    VideoManager,
+    crop_filter_for_aspect,
+    load_video_config,
+    normalize_v4l2_input_format,
+)
 from video_manager_ipc import VideoManagerClient  # noqa: E402
 
 
@@ -85,6 +90,9 @@ def stop_process(proc: subprocess.Popen) -> None:
 
 
 def test_config_and_runner() -> None:
+    assert normalize_v4l2_input_format("MJPG") == "mjpeg"
+    assert normalize_v4l2_input_format("YUYV") == "yuyv422"
+
     cfg = load_video_config(CONFIG)
     assert cfg.rtsp.host == "192.168.1.50"
     assert cfg.rtsp.transport == "tcp"
@@ -101,6 +109,16 @@ def test_config_and_runner() -> None:
     ]
     assert local_cfg.direct_sources[0].input_width == 1280
     assert local_cfg.direct_sources[0].width == 960
+
+    upper_format_cfg = load_video_config(LOCAL_CONFIG)
+    upper_format_cfg.direct_sources[0].input_format = "MJPG"
+    upper_format_manager = VideoManager(upper_format_cfg, dry_run=True)
+    upper_format_command = upper_format_manager.build_ffmpeg_command(
+        upper_format_cfg.direct_sources[0]
+    )
+    assert "-input_format" in upper_format_command
+    assert "mjpeg" in upper_format_command
+    assert "MJPG" not in upper_format_command
 
     manager = VideoManager(cfg, dry_run=True)
     started = manager.start(0)
