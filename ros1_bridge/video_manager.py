@@ -42,6 +42,8 @@ class DirectVideoSource:
     source_id: str = ""
     runner: str = "ffmpeg"
     input_format: str = "mjpeg"
+    input_width: int = 1280
+    input_height: int = 720
     width: int = 1280
     height: int = 720
     fps: int = 30
@@ -50,8 +52,12 @@ class DirectVideoSource:
     enabled: bool = True
     slot_hint: Optional[int] = None
     ffmpeg_path: str = "ffmpeg"
+    vf: str = ""
     crop_aspect: str = ""
     video_filter: str = ""
+    gop: int = 0
+    keyint_min: int = 0
+    x264_params: str = "repeat-headers=1"
     extra_input_args: List[str] = field(default_factory=list)
     extra_output_args: List[str] = field(default_factory=list)
 
@@ -62,9 +68,11 @@ class DirectVideoSource:
             self.slot_hint = self.camera_id
 
     def output_size(self) -> Tuple[int, int]:
-        crop = crop_dimensions_for_aspect(self.width, self.height, self.crop_aspect)
-        if crop is None:
+        if self.width and self.height:
             return self.width, self.height
+        crop = crop_dimensions_for_aspect(self.input_width, self.input_height, self.crop_aspect)
+        if crop is None:
+            return self.input_width, self.input_height
         return crop[0], crop[1]
 
     def camera_info(
@@ -86,11 +94,12 @@ class DirectVideoSource:
             "codec": self.codec,
             "width": output_width,
             "height": output_height,
-            "source_width": self.width,
-            "source_height": self.height,
+            "source_width": self.input_width,
+            "source_height": self.input_height,
             "fps": self.fps,
             "bitrate_kbps": self.bitrate_kbps if online else 0,
             "profile": "low_latency",
+            "vf": self.vf,
             "crop_aspect": self.crop_aspect,
             "video_filter": self.video_filter,
             "last_error": last_error,
@@ -110,6 +119,7 @@ class VideoConfig:
 class DirectSourceRuntime:
     source: DirectVideoSource
     online: bool = False
+    desired_online: bool = False
     last_error: str = ""
     process: Optional[subprocess.Popen] = None
     started_at_ms: int = 0
@@ -125,6 +135,7 @@ class DirectSourceRuntime:
         info["stopped_at_ms"] = self.stopped_at_ms
         info["restart_count"] = self.restart_count
         info["last_exit_code"] = self.last_exit_code
+        info["desired_online"] = self.desired_online
         info["command"] = " ".join(shlex.quote(part) for part in self.command)
         return info
 
@@ -170,6 +181,7 @@ class VideoManager:
     def start(self, camera_id: int) -> Dict[str, Any]:
         with self._lock:
             runtime = self._get_runtime(camera_id)
+            runtime.desired_online = True
             self._refresh_runtime_locked(runtime)
             if runtime.online:
                 return runtime.camera_info(self.config.rtsp)
@@ -216,6 +228,7 @@ class VideoManager:
     def stop(self, camera_id: int) -> Dict[str, Any]:
         with self._lock:
             runtime = self._get_runtime(camera_id)
+            runtime.desired_online = False
             process = runtime.process
             if process and process.poll() is None:
                 process.terminate()
@@ -245,12 +258,19 @@ class VideoManager:
                 for source in self.config.direct_sources
             ]
 
-    def refresh(self) -> List[Dict[str, Any]]:
+    def refresh(self, auto_restart: bool = False) -> List[Dict[str, Any]]:
         changed: List[Dict[str, Any]] = []
         with self._lock:
             for runtime in self._runtime.values():
                 before = runtime.online
                 self._refresh_runtime_locked(runtime)
+                if auto_restart and runtime.desired_online and not runtime.online:
+                    runtime.restart_count += 1
+                    self.events.emit("video", "stream auto-restarting", data={
+                        "camera_id": runtime.source.camera_id,
+                    })
+                    changed.append(self.start(runtime.source.camera_id))
+                    continue
                 if runtime.online != before:
                     changed.append(runtime.camera_info(self.config.rtsp))
         return changed
@@ -269,7 +289,7 @@ class VideoManager:
             command += ["-input_format", source.input_format]
         command += [
             "-video_size",
-            f"{source.width}x{source.height}",
+            f"{source.input_width}x{source.input_height}",
             "-framerate",
             str(source.fps),
         ]
@@ -287,7 +307,14 @@ class VideoManager:
 
     def _ffmpeg_video_filters(self, source: DirectVideoSource) -> List[str]:
         filters: List[str] = []
-        crop_filter = crop_filter_for_aspect(source.width, source.height, source.crop_aspect)
+        if source.vf:
+            filters.append(source.vf)
+            return filters
+        crop_filter = crop_filter_for_aspect(
+            source.input_width,
+            source.input_height,
+            source.crop_aspect,
+        )
         if crop_filter:
             filters.append(crop_filter)
         if source.video_filter:
@@ -311,7 +338,13 @@ class VideoManager:
                 "-tune",
                 "zerolatency",
                 "-g",
-                str(max(source.fps, 1)),
+                str(source.gop or max(source.fps, 1)),
+                "-keyint_min",
+                str(source.keyint_min or source.gop or max(source.fps, 1)),
+                "-sc_threshold",
+                "0",
+                "-x264-params",
+                source.x264_params,
                 "-b:v",
                 f"{source.bitrate_kbps}k",
             ]
@@ -363,7 +396,8 @@ def parse_video_config(data: Dict[str, Any]) -> VideoConfig:
     if not isinstance(rtsp_data, dict):
         raise VideoConfigError("rtsp must be a mapping")
 
-    host = _required_str(rtsp_data, "host", default="127.0.0.1")
+    host_default = rtsp_data.get("host", "127.0.0.1")
+    host = _required_str(rtsp_data, "public_host", default=host_default)
     publish_host = _required_str(rtsp_data, "publish_host", default="127.0.0.1")
     rtsp = RtspConfig(
         host=host,
@@ -377,7 +411,13 @@ def parse_video_config(data: Dict[str, Any]) -> VideoConfig:
     if not isinstance(source_items, list):
         raise VideoConfigError("direct_sources must be a list")
 
-    sources = [parse_direct_source(item, index) for index, item in enumerate(source_items)]
+    sources: List[DirectVideoSource] = []
+    for index, item in enumerate(source_items):
+        if not isinstance(item, dict):
+            raise VideoConfigError(f"direct_sources[{index}] must be a mapping")
+        if not _bool_value(item, "enabled", default=True):
+            continue
+        sources.append(parse_direct_source(item, index))
     _validate_unique_camera_ids(sources)
     _validate_unique_rtsp_paths(sources)
     return VideoConfig(rtsp=rtsp, direct_sources=sources)
@@ -391,6 +431,26 @@ def parse_direct_source(item: Any, index: int) -> DirectVideoSource:
     if camera_id > 4:
         raise VideoConfigError(f"direct_sources[{index}].camera_id must be between 0 and 4")
 
+    base_width = _positive_int(item, "width", default=1280)
+    base_height = _positive_int(item, "height", default=720)
+    input_width = _positive_int(item, "input_width", default=base_width)
+    input_height = _positive_int(item, "input_height", default=base_height)
+    output_width = _positive_int(item, "output_width", default=base_width)
+    output_height = _positive_int(item, "output_height", default=base_height)
+    vf = _optional_str(item, "vf")
+    crop_aspect = _optional_aspect(item, "crop_aspect")
+    explicit_output_size = (
+        "input_width" in item
+        or "input_height" in item
+        or "output_width" in item
+        or "output_height" in item
+        or bool(vf)
+    )
+    if crop_aspect and not explicit_output_size:
+        crop = crop_dimensions_for_aspect(input_width, input_height, crop_aspect)
+        if crop is not None:
+            output_width, output_height = crop[0], crop[1]
+
     source = DirectVideoSource(
         camera_id=camera_id,
         source_id=_required_str(item, "source_id", default=f"camera_{camera_id}"),
@@ -399,16 +459,22 @@ def parse_direct_source(item: Any, index: int) -> DirectVideoSource:
         runner=_required_str(item, "runner", default="ffmpeg"),
         device=_required_str(item, "device"),
         input_format=_required_str(item, "input_format", default="mjpeg"),
-        width=_positive_int(item, "width", default=1280),
-        height=_positive_int(item, "height", default=720),
+        input_width=input_width,
+        input_height=input_height,
+        width=output_width,
+        height=output_height,
         fps=_positive_int(item, "fps", default=30),
         codec=_required_str(item, "codec", default="h264"),
         bitrate_kbps=_positive_int(item, "bitrate_kbps", default=2500),
         rtsp_path=_required_str(item, "rtsp_path"),
         enabled=_bool_value(item, "enabled", default=True),
         ffmpeg_path=_required_str(item, "ffmpeg_path", default="ffmpeg"),
-        crop_aspect=_optional_aspect(item, "crop_aspect"),
+        vf=vf,
+        crop_aspect=crop_aspect,
         video_filter=_optional_str(item, "video_filter"),
+        gop=_positive_int(item, "gop", default=0),
+        keyint_min=_positive_int(item, "keyint_min", default=0),
+        x264_params=_required_str(item, "x264_params", default="repeat-headers=1"),
         extra_input_args=_string_list(item, "extra_input_args"),
         extra_output_args=_string_list(item, "extra_output_args"),
     )
@@ -419,7 +485,9 @@ def parse_direct_source(item: Any, index: int) -> DirectVideoSource:
         )
     if "/" in source.rtsp_path.strip("/"):
         raise VideoConfigError(f"direct_sources[{index}].rtsp_path must be a single path segment")
-    if source.codec.lower() in ("copy", "passthrough") and (source.crop_aspect or source.video_filter):
+    if source.codec.lower() in ("copy", "passthrough") and (
+        source.vf or source.crop_aspect or source.video_filter
+    ):
         raise VideoConfigError(
             f"direct_sources[{index}] cannot use codec={source.codec!r} with video filters"
         )

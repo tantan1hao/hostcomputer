@@ -10,9 +10,12 @@ from typing import Any, Dict, List
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 BRIDGE = os.path.join(ROOT, "ros1_bridge", "host_bridge_node.py")
+VIDEO_MANAGER_NODE = os.path.join(ROOT, "ros1_bridge", "video_manager_node.py")
 CONFIG = os.path.join(ROOT, "ros1_bridge", "video_sources.example.yaml")
+LOCAL_CONFIG = os.path.join(ROOT, "ros1_bridge", "video_sources.local.yaml")
 HOST = "127.0.0.1"
 PORT = int(os.getenv("VIDEO_MANAGER_TEST_PORT", "19194"))
+MANAGER_PORT = int(os.getenv("VIDEO_MANAGER_NODE_TEST_PORT", "19195"))
 
 sys.path.insert(0, os.path.join(ROOT, "ros1_bridge"))
 from video_manager import VideoManager, crop_filter_for_aspect, load_video_config  # noqa: E402
@@ -60,15 +63,15 @@ def now_ms() -> int:
     return int(time.time() * 1000)
 
 
-def wait_for_port(timeout: float = 3.0) -> None:
+def wait_for_port(port: int, name: str, timeout: float = 3.0) -> None:
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
-            with socket.create_connection((HOST, PORT), timeout=0.2):
+            with socket.create_connection((HOST, port), timeout=0.2):
                 return
         except OSError:
             time.sleep(0.05)
-    raise RuntimeError(f"bridge did not open {HOST}:{PORT}")
+    raise RuntimeError(f"{name} did not open {HOST}:{port}")
 
 
 def stop_process(proc: subprocess.Popen) -> None:
@@ -84,9 +87,19 @@ def test_config_and_runner() -> None:
     cfg = load_video_config(CONFIG)
     assert cfg.rtsp.host == "192.168.1.50"
     assert cfg.rtsp.transport == "tcp"
-    assert len(cfg.direct_sources) == 2
+    assert len(cfg.direct_sources) == 1
     assert cfg.direct_sources[0].crop_aspect == "4:3"
     assert crop_filter_for_aspect(1280, 720, "4:3") == "crop=960:720:160:0"
+    local_cfg = load_video_config(LOCAL_CONFIG)
+    assert [source.source_id for source in local_cfg.direct_sources] == [
+        "paw_realsense",
+        "overheadcam",
+        "pawcam",
+        "frontcam",
+        "armcam",
+    ]
+    assert local_cfg.direct_sources[0].input_width == 1280
+    assert local_cfg.direct_sources[0].width == 960
 
     manager = VideoManager(cfg, dry_run=True)
     started = manager.start(0)
@@ -102,6 +115,8 @@ def test_config_and_runner() -> None:
     assert "-vf crop=960:720:160:0" in started["command"]
     assert "-pix_fmt yuv420p" in started["command"]
     assert "-profile:v baseline" in started["command"]
+    assert "-keyint_min 30" in started["command"]
+    assert "-x264-params repeat-headers=1" in started["command"]
     assert "-rtsp_transport tcp" in started["command"]
     assert "rtsp://127.0.0.1:8554/front_raw" in started["command"]
 
@@ -114,7 +129,25 @@ def test_config_and_runner() -> None:
 
 
 def test_bridge_video_requests() -> None:
-    proc = subprocess.Popen(
+    manager_proc = subprocess.Popen(
+        [
+            sys.executable,
+            VIDEO_MANAGER_NODE,
+            "--host",
+            HOST,
+            "--port",
+            str(MANAGER_PORT),
+            "--config",
+            CONFIG,
+            "--dry-run",
+        ],
+        cwd=ROOT,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    wait_for_port(MANAGER_PORT, "video manager")
+
+    bridge_proc = subprocess.Popen(
         [
             sys.executable,
             BRIDGE,
@@ -123,15 +156,19 @@ def test_bridge_video_requests() -> None:
             HOST,
             "--port",
             str(PORT),
-            "--video-config",
-            CONFIG,
-            "--video-dry-run",
+            "--camera-config",
+            "",
+            "--video-manager",
+            "--video-manager-host",
+            HOST,
+            "--video-manager-port",
+            str(MANAGER_PORT),
         ],
         cwd=ROOT,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    wait_for_port()
+    wait_for_port(PORT, "bridge")
     try:
         client = JsonLineClient(HOST, PORT)
         try:
@@ -139,7 +176,7 @@ def test_bridge_video_requests() -> None:
             assert hello["bridge_name"] == "host_bridge_node"
             capabilities = client.recv_until("capabilities")
             assert "camera_stream_request" in capabilities["supports"]
-            assert len(capabilities["cameras"]) == 2
+            assert len(capabilities["cameras"]) == 1
             assert capabilities["cameras"][0]["online"] is False
 
             client.send({
@@ -184,7 +221,8 @@ def test_bridge_video_requests() -> None:
         finally:
             client.close()
     finally:
-        stop_process(proc)
+        stop_process(bridge_proc)
+        stop_process(manager_proc)
 
 
 def main() -> None:

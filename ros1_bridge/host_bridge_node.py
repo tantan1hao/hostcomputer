@@ -12,7 +12,12 @@ from bridge_protocol import json_line
 from debug_ui import DebugHttpServer
 from debug_events import EventSink, RingBufferEventSink
 from output_adapters import DryRunOutput, OutputAdapter, RosOutput
-from video_manager import VideoConfigError, VideoManager
+from video_manager_ipc import (
+    DEFAULT_VIDEO_MANAGER_HOST,
+    DEFAULT_VIDEO_MANAGER_PORT,
+    VideoManagerClient,
+    VideoManagerGateway,
+)
 
 DEFAULT_CAMERA_CONFIG = os.path.join(os.path.dirname(__file__), "video_sources.local.yaml")
 
@@ -31,8 +36,7 @@ class HostBridgeServer:
         gripper_max_position: float = 0.044,
         gripper_initial_position: float = 0.022,
         cameras: Optional[List[Dict[str, Any]]] = None,
-        video_manager: Optional[VideoManager] = None,
-        video_autostart: bool = False,
+        video_gateway: Optional[VideoManagerGateway] = None,
         video_poll_sec: float = 1.0,
         joint_runtime_topic: str = "",
         events: Optional[EventSink] = None,
@@ -43,8 +47,7 @@ class HostBridgeServer:
         self.client_lock = threading.Lock()
         self.active_clients: List["BridgeClient"] = []
         self.events = events or RingBufferEventSink()
-        self.video_manager = video_manager
-        self.video_autostart = video_autostart
+        self.video_gateway = video_gateway
         self.video_poll_sec = max(video_poll_sec, 0.1)
         self.joint_runtime_topic = joint_runtime_topic
         self.joint_runtime_subscriber = None
@@ -58,8 +61,8 @@ class HostBridgeServer:
             gripper_max_position,
             gripper_initial_position,
             cameras,
-            self.video_manager.camera_infos if self.video_manager else None,
-            self.handle_camera_stream_request if self.video_manager else None,
+            self.video_gateway.camera_infos if self.video_gateway else None,
+            self.handle_camera_stream_request if self.video_gateway else None,
             self.events,
         )
         self.runtime = BridgeRuntime(self.core, self.broadcast)
@@ -88,18 +91,23 @@ class HostBridgeServer:
             self.stop_video_manager()
 
     def start_video_manager(self) -> None:
-        if not self.video_manager:
+        if not self.video_gateway:
             return
-        if self.video_autostart:
-            started = self.video_manager.start_enabled()
-            self.events.emit("video", "video autostart completed", data={"count": len(started)})
+        changed = self.video_gateway.refresh()
+        if self.video_gateway.last_error():
+            self.events.emit("video", "external video manager unavailable", level="warning", data={
+                "error": self.video_gateway.last_error(),
+            })
+        else:
+            self.events.emit("video", "external video manager connected", data={
+                "initial_changed": len(changed),
+            })
         threading.Thread(target=self._video_monitor_loop, daemon=True).start()
 
     def stop_video_manager(self) -> None:
-        if not self.video_manager:
+        if not self.video_gateway:
             return
-        stopped = self.video_manager.stop_all()
-        self.events.emit("video", "video manager stopped", data={"count": len(stopped)})
+        self.events.emit("video", "external video manager detached")
 
     def start_joint_runtime_forwarder(self) -> None:
         topic = self.joint_runtime_topic.strip()
@@ -138,40 +146,22 @@ class HostBridgeServer:
         self.events.emit("joint_runtime", "joint runtime forwarder started", data={"topic": topic})
 
     def _video_monitor_loop(self) -> None:
-        if not self.video_manager:
+        if not self.video_gateway:
             return
         while not self.stop_event.wait(self.video_poll_sec):
-            for camera in self.video_manager.refresh():
+            for camera in self.video_gateway.refresh():
                 self.broadcast(self.core.make_camera_info(camera))
 
     def handle_camera_stream_request(self, params: Dict[str, Any]) -> Tuple[bool, int, str, Optional[Dict[str, Any]]]:
-        if not self.video_manager:
+        if not self.video_gateway:
             return False, 2400, "video manager unavailable", None
-
-        try:
-            camera_id = int(params.get("camera_id"))
-        except (TypeError, ValueError):
-            return False, 2401, "camera_id must be an integer", None
-
-        action = str(params.get("action", "")).strip().lower()
-        try:
-            if action == "start":
-                camera = self.video_manager.start(camera_id)
-            elif action == "stop":
-                camera = self.video_manager.stop(camera_id)
-            elif action == "restart":
-                camera = self.video_manager.restart(camera_id)
-            else:
-                return False, 2402, f"unsupported camera stream action: {action}", None
-        except KeyError:
-            return False, 2403, f"unknown camera_id: {camera_id}", None
-
+        ok, code, message, camera = self.video_gateway.stream_request(params)
         self.events.emit("video", "camera stream request handled", data={
-            "camera_id": camera_id,
-            "action": action,
-            "online": camera.get("online", False),
+            "camera_id": params.get("camera_id"),
+            "action": params.get("action"),
+            "online": camera.get("online", False) if camera else False,
         })
-        return True, 0, f"camera stream {action} accepted", camera
+        return ok, code, message, camera
 
     def remove_client(self, client: "BridgeClient") -> None:
         with self.client_lock:
@@ -408,16 +398,28 @@ def build_arg_parser() -> argparse.ArgumentParser:
         type=parse_camera,
         help="camera entry as id,name,rtsp_url; may be repeated",
     )
-    parser.add_argument("--video-config", default="", help="YAML config for direct RTSP video sources")
+    parser.add_argument(
+        "--video-manager",
+        action="store_true",
+        help="use the standalone video_manager_node for camera list and stream lifecycle",
+    )
+    parser.add_argument("--video-manager-host", default=DEFAULT_VIDEO_MANAGER_HOST)
+    parser.add_argument("--video-manager-port", type=int, default=DEFAULT_VIDEO_MANAGER_PORT)
+    parser.add_argument("--video-manager-timeout", type=float, default=1.0)
+    parser.add_argument(
+        "--video-config",
+        default="",
+        help="deprecated: start ros1_bridge/video_manager_node.py with --config instead",
+    )
     parser.add_argument(
         "--video-dry-run",
         action="store_true",
-        help="build video commands and mark streams online without starting ffmpeg",
+        help="deprecated: pass --dry-run to video_manager_node.py instead",
     )
     parser.add_argument(
         "--video-autostart",
         action="store_true",
-        help="start enabled direct video sources when the bridge starts",
+        help="deprecated: pass --autostart to video_manager_node.py instead",
     )
     parser.add_argument("--video-poll-sec", type=float, default=1.0)
     parser.add_argument(
@@ -454,21 +456,27 @@ def main() -> None:
     else:
         output = DryRunOutput(events, service_commands)
 
-    video_manager: Optional[VideoManager] = None
-    if args.video_config:
-        try:
-            video_manager = VideoManager.from_config_path(
-                args.video_config,
-                dry_run=args.video_dry_run,
-                events=events,
-            )
-            events.emit("video", "video manager configured", data={
-                "config": args.video_config,
-                "dry_run": args.video_dry_run,
-                "sources": len(video_manager.config.direct_sources),
-            })
-        except VideoConfigError as exc:
-            raise SystemExit(f"failed to load video config: {exc}") from exc
+    if args.video_config or args.video_dry_run or args.video_autostart:
+        raise SystemExit(
+            "--video-config/--video-dry-run/--video-autostart moved to "
+            "ros1_bridge/video_manager_node.py; start that node separately and pass "
+            "--video-manager to host_bridge_node.py"
+        )
+
+    video_gateway: Optional[VideoManagerGateway] = None
+    if args.video_manager:
+        video_gateway = VideoManagerGateway(
+            VideoManagerClient(
+                args.video_manager_host,
+                args.video_manager_port,
+                args.video_manager_timeout,
+            ),
+            events,
+        )
+        events.emit("video", "external video manager configured", data={
+            "host": args.video_manager_host,
+            "port": args.video_manager_port,
+        })
 
     server = HostBridgeServer(
         host=args.host,
@@ -482,8 +490,7 @@ def main() -> None:
         gripper_max_position=args.gripper_max_position,
         gripper_initial_position=args.gripper_initial_position,
         cameras=cameras,
-        video_manager=video_manager,
-        video_autostart=args.video_autostart,
+        video_gateway=video_gateway,
         video_poll_sec=args.video_poll_sec,
         joint_runtime_topic=args.joint_runtime_topic if not args.dry_run else "",
         events=events,

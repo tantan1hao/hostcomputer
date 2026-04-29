@@ -1,5 +1,5 @@
 rtsp:
-  host: 192.168.1.50
+  public_host: 192.168.1.50
   publish_host: 127.0.0.1
   port: 8554
   server: mediamtx
