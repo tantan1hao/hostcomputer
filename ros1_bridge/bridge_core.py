@@ -608,8 +608,7 @@ class BridgeCore:
                     "count": len(targets),
                 }, level="info" if ok else "error")
                 yield self.make_ack(msg, ok, code, message)
-                if ok:
-                    yield self.make_arm_named_targets(seq, targets, message)
+                yield self.make_arm_named_targets(seq, targets, message)
             elif command == "move_arm_named_target":
                 params = msg.get("params", {}) or {}
                 target = str(params.get("target", "")).strip()

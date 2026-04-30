@@ -467,11 +467,16 @@ void MainWindow::updateArmNamedTargets(const QJsonObject &message)
     }
 
     if (m_armActionList->count() == 0) {
-        auto *emptyItem = new QListWidgetItem(QStringLiteral("下位机未返回可用固定位姿"));
+        const QString messageText = message.value(QStringLiteral("message")).toString();
+        auto *emptyItem = new QListWidgetItem(messageText.isEmpty()
+                                                 ? QStringLiteral("下位机未返回可用固定位姿")
+                                                 : messageText);
         emptyItem->setFlags(Qt::NoItemFlags);
         m_armActionList->addItem(emptyItem);
         m_executeArmActionButton->setEnabled(false);
-        addError("[机械臂] 固定位姿列表为空");
+        addError(messageText.isEmpty()
+                     ? QStringLiteral("[机械臂] 固定位姿列表为空")
+                     : QString("[机械臂] %1").arg(messageText));
         return;
     }
 

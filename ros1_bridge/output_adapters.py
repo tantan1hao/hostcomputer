@@ -171,6 +171,8 @@ class RosOutput(OutputAdapter):
         self.moveit_group_name = moveit_group
         self._move_group = None
         self._moveit_error = ""
+        self._moveit_commander = None
+        self._moveit_roscpp_initialized = False
         rospy.init_node(node_name, anonymous=False)
         self._cmd_vel_pub = rospy.Publisher(cmd_vel_topic, Twist, queue_size=1)
         self._servo_pub = rospy.Publisher(servo_topic, TwistStamped, queue_size=1)
@@ -312,9 +314,13 @@ class RosOutput(OutputAdapter):
             self.events.emit("moveit", "moveit group disabled", level="warning")
             return
         try:
-            import moveit_commander
-            moveit_commander.roscpp_initialize(sys.argv)
-            self._move_group = moveit_commander.MoveGroupCommander(moveit_group)
+            if self._moveit_commander is None:
+                import moveit_commander
+                self._moveit_commander = moveit_commander
+            if not self._moveit_roscpp_initialized:
+                self._moveit_commander.roscpp_initialize(sys.argv)
+                self._moveit_roscpp_initialized = True
+            self._move_group = self._moveit_commander.MoveGroupCommander(moveit_group)
         except Exception as exc:
             self._move_group = None
             self._moveit_error = str(exc)
@@ -327,8 +333,14 @@ class RosOutput(OutputAdapter):
         self.events.emit("moveit", "moveit group ready", data={"group": moveit_group})
         self._rospy.loginfo("host_bridge_node using MoveIt group %s", moveit_group)
 
+    def _ensure_moveit_group(self) -> bool:
+        if self._move_group is not None:
+            return True
+        self._init_moveit_group(self.moveit_group_name)
+        return self._move_group is not None
+
     def list_arm_named_targets(self) -> Tuple[bool, int, str, List[Dict[str, str]]]:
-        if self._move_group is None:
+        if not self._ensure_moveit_group():
             return False, 2303, f"MoveIt unavailable: {self._moveit_error}", []
         try:
             names = list(self._move_group.get_named_targets())
@@ -347,7 +359,7 @@ class RosOutput(OutputAdapter):
         return True, 0, f"{len(targets)} MoveIt named targets", targets
 
     def move_arm_named_target(self, target: str) -> Tuple[bool, int, str]:
-        if self._move_group is None:
+        if not self._ensure_moveit_group():
             return False, 2303, f"MoveIt unavailable: {self._moveit_error}"
         if not target:
             return False, 2202, "missing MoveIt target"
